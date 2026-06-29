@@ -1,0 +1,10 @@
+import * as Prisma from './internal/prismaNamespaceBrowser';
+export { Prisma };
+export * as $Enums from './enums';
+export * from './enums';
+export type Sede = Prisma.SedeModel;
+export type Perfil = Prisma.PerfilModel;
+export type Tercero = Prisma.TerceroModel;
+export type MenuItem = Prisma.MenuItemModel;
+export type PerfilVista = Prisma.PerfilVistaModel;
+export type AccesoDato = Prisma.AccesoDatoModel;

@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReglaCrud {
+  READ_ONLY
+  ADDS_AND_UPDATES
+  ALL_CHANGES
+}
+
+enum TablaProtegida {
+  Cotizacion
+  Gastos
+  ProgramacionPagos
+  PagosEjecucion
+}
+
+model Sede {
+  id     String @id
+  nombre String
+
+  terceros       Tercero[]
+  accesoDatos    AccesoDato[]
+  programaciones Programacion[]
+
+  @@map("sedes")
+}
+
+model Perfil {
+  id           String    @id
+  nombre       String
+  reglas       ReglaCrud @default(READ_ONLY)
+  vistaInicial String?   @map("vista_inicial")
+
+  terceros Tercero[]
+  vistas   PerfilVista[]
+
+  @@map("perfiles")
+}
+
+model Tercero {
+  id             String  @id @default(uuid())
+  nombreCompleto String  @map("nombre_completo")
+  correo         String? @unique
+  passwordHash   String? @map("password_hash")
+  perfilId       String? @map("perfil_id")
+  sedeId         String? @map("sede_id")
+
+  perfil               Perfil?               @relation(fields: [perfilId], references: [id])
+  sede                 Sede?                 @relation(fields: [sedeId], references: [id])
+  accesoDatos          AccesoDato[]
+  programacionMedicos  ProgramacionMedico[]
+  programacionTecnicos ProgramacionTecnico[]
+
+  @@map("terceros")
+}
+
+model MenuItem {
+  id       String  @id
+  nombre   String
+  etiqueta String
+  modulo   String?
+  orden    Int     @default(0)
+  imagen   String?
+
+  @@map("menu_items")
+}
+
+model PerfilVista {
+  perfilId    String @map("perfil_id")
+  vistaNombre String @map("vista_nombre")
+
+  perfil Perfil @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  @@id([perfilId, vistaNombre])
+  @@map("perfil_vistas")
+}
+
+model AccesoDato {
+  terceroId String         @map("tercero_id")
+  tabla     TablaProtegida
+  sedeId    String         @map("sede_id")
+
+  tercero Tercero @relation(fields: [terceroId], references: [id], onDelete: Cascade)
+  sede    Sede    @relation(fields: [sedeId], references: [id])
+
+  @@id([terceroId, tabla, sedeId])
+  @@map("acceso_datos")
+}
+
+model Hospital {
+  id     String @id @default(uuid())
+  nombre String
+  ciudad String?
+
+  programaciones Programacion[]
+
+  @@map("hospitales")
+}
+
+model Programacion {
+  id            String    @id @default(uuid())
+  idLegacy      String?   @unique @map("id_legacy")
+  creadoPor     String?   @map("creado_por")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  fechaQx       DateTime? @map("fecha_qx") @db.Date
+  horaQx        String?   @map("hora_qx")
+  sedeId        String?   @map("sede_id")
+  hospitalId    String?   @map("hospital_id")
+  consumo            String?
+  observaciones      String?
+  numProgram         String?   @map("num_program")
+  folioRequisicion   String?   @map("folio_requisicion")
+  avance             Decimal?  @db.Decimal(5, 2)
+
+  switch               Boolean?
+  enviarProgramacion   Boolean? @map("enviar_programacion")
+  adjuntarDocumento    String?  @map("adjuntar_documento")
+  cotizacionUrl        String?  @map("cotizacion_url")
+
+  // Banderas de estado (activadas manualmente)
+  sinRemision       Boolean @default(false) @map("sin_remision")
+  consumoNoValidado Boolean @default(false) @map("consumo_no_validado")
+  sinComision       Boolean @default(false) @map("sin_comision")
+  cerrada           Boolean @default(false)
+
+  // Financiero
+  montoTecnicos       Decimal? @map("monto_tecnicos") @db.Decimal(15, 2)
+  montoInversionistas Decimal? @map("monto_inversionistas") @db.Decimal(15, 2)
+  montoPlus           Decimal? @map("monto_plus") @db.Decimal(15, 2)
+
+  sede     Sede?     @relation(fields: [sedeId], references: [id])
+  hospital Hospital? @relation(fields: [hospitalId], references: [id])
+  medicos  ProgramacionMedico[]
+  tecnicos ProgramacionTecnico[]
+
+  @@map("programaciones")
+}
+
+model ProgramacionMedico {
+  programacionId String @map("programacion_id")
+  medicoId       String @map("medico_id")
+
+  programacion Programacion @relation(fields: [programacionId], references: [id], onDelete: Cascade)
+  medico       Tercero      @relation(fields: [medicoId], references: [id])
+
+  @@id([programacionId, medicoId])
+  @@map("programacion_medicos")
+}
+
+model ProgramacionTecnico {
+  programacionId String @map("programacion_id")
+  tecnicoId      String @map("tecnico_id")
+
+  programacion Programacion @relation(fields: [programacionId], references: [id], onDelete: Cascade)
+  tecnico      Tercero      @relation(fields: [tecnicoId], references: [id])
+
+  @@id([programacionId, tecnicoId])
+  @@map("programacion_tecnicos")
+}
