@@ -7,57 +7,127 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum ReglaCrud {
-  READ_ONLY
-  ADDS_AND_UPDATES
-  ALL_CHANGES
+model Pais {
+  id       String    @id @default(uuid())
+  nombre   String    @unique
+  estados  Estado[]
+  terceros Tercero[]
+
+  @@map("paises")
 }
 
-enum TablaProtegida {
-  Cotizacion
-  Gastos
-  ProgramacionPagos
-  PagosEjecucion
+model Estado {
+  id       String    @id @default(uuid())
+  nombre   String
+  paisId   String?   @map("pais_id")
+  ciudades Ciudad[]
+  pais     Pais?     @relation(fields: [paisId], references: [id])
+  terceros Tercero[]
+
+  @@map("estados")
+}
+
+model Ciudad {
+  id         String      @id @default(uuid())
+  nombre     String
+  estadoId   String?     @map("estado_id")
+  estado     Estado?     @relation(fields: [estadoId], references: [id])
+  hospitales Hospital[]
+  terceros   Tercero[]
+
+  @@map("ciudades")
+}
+
+model RegimenFiscal {
+  id            String          @id
+  descripcion   String
+  datosFiscales DatosFiscales[]
+
+  @@map("regimenes_fiscales")
+}
+
+model UsoCfdi {
+  id                  String          @id
+  descripcion         String
+  aplicaPersonaFisica Boolean         @default(false) @map("aplica_persona_fisica")
+  aplicaPersonaMoral  Boolean         @default(false) @map("aplica_persona_moral")
+  datosFiscales       DatosFiscales[]
+
+  @@map("usos_cfdi")
+}
+
+model Cargo {
+  id       String    @id @default(uuid())
+  nombre   String    @unique
+  terceros Tercero[]
+
+  @@map("cargos")
+}
+
+model FormaPago {
+  id       String   @id
+  forma    String
+  efectivo Boolean  @default(false)
+  tc       Boolean?
+  tarifas     Tarifa[]
+  valConsumos ValConsumo[]
+
+  @@map("formas_pago")
+}
+
+model Tarifa {
+  id                  String     @id
+  nombre              String     @unique
+  especial            Boolean    @default(false)
+  orden               Int?
+  tipoCubrimientoId   String?    @map("tipo_cubrimiento_id")
+  tipoActualizacion   Boolean?   @map("tipo_actualizacion")
+  porcentajePrecio    Decimal?   @map("porcentaje_precio")    @db.Decimal(7,2)
+  ultimaActualizacion DateTime?  @map("ultima_actualizacion")
+  actualizadoPor      String?    @map("actualizado_por")
+  actualizar          Int?
+  comentarios         String?
+  metodoPagoId        String?    @map("metodo_pago_id")
+
+  tipoCubrimiento       Tarifa?    @relation("TarifaCubrimiento", fields: [tipoCubrimientoId], references: [id])
+  subTarifas            Tarifa[]   @relation("TarifaCubrimiento")
+  metodoPago            FormaPago? @relation(fields: [metodoPagoId], references: [id])
+  terceros              Tercero[]
+  remisionesTarifa      Remision[] @relation("RemisionTarifa")
+  remisionesCubrimiento Remision[] @relation("RemisionCubrimiento")
+
+  @@map("subtarifas")
 }
 
 model Sede {
-  id     String @id
-  nombre String
-
-  terceros       Tercero[]
-  accesoDatos    AccesoDato[]
-  programaciones Programacion[]
+  id                       String                    @id
+  nombre                   String
+  ciudad                   String?
+  estado                   String?
+  observaciones            String?
+  accesoDatos              AccesoDato[]
+  programaciones           Programacion[]
+  terceroSedesAutorizacion TerceroSedeAutorizacion[]
+  terceroSedesDisponibles  TerceroSedeDisponible[]
+  terceros                 Tercero[]
+  facturas                 Factura[]
+  valConsumosSedeConsumo   ValConsumo[]             @relation("ValConsumoSedeConsumo")
+  valConsumosSedeUsuario   ValConsumo[]             @relation("ValConsumoSedeUsuario")
+  almacenes                Almacen[]
+  valConsumoLotes          ValConsumoLote[]
 
   @@map("sedes")
 }
 
 model Perfil {
-  id           String    @id
+  id           String        @id
   nombre       String
-  reglas       ReglaCrud @default(READ_ONLY)
-  vistaInicial String?   @map("vista_inicial")
-
-  terceros Tercero[]
-  vistas   PerfilVista[]
+  reglas       ReglaCrud     @default(READ_ONLY)
+  vistaInicial String?       @map("vista_inicial")
+  vistas       PerfilVista[]
+  terceros     Tercero[]
 
   @@map("perfiles")
-}
-
-model Tercero {
-  id             String  @id @default(uuid())
-  nombreCompleto String  @map("nombre_completo")
-  correo         String? @unique
-  passwordHash   String? @map("password_hash")
-  perfilId       String? @map("perfil_id")
-  sedeId         String? @map("sede_id")
-
-  perfil               Perfil?               @relation(fields: [perfilId], references: [id])
-  sede                 Sede?                 @relation(fields: [sedeId], references: [id])
-  accesoDatos          AccesoDato[]
-  programacionMedicos  ProgramacionMedico[]
-  programacionTecnicos ProgramacionTecnico[]
-
-  @@map("terceros")
 }
 
 model MenuItem {
@@ -74,8 +144,7 @@ model MenuItem {
 model PerfilVista {
   perfilId    String @map("perfil_id")
   vistaNombre String @map("vista_nombre")
-
-  perfil Perfil @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+  perfil      Perfil @relation(fields: [perfilId], references: [id], onDelete: Cascade)
 
   @@id([perfilId, vistaNombre])
   @@map("perfil_vistas")
@@ -85,82 +154,603 @@ model AccesoDato {
   terceroId String         @map("tercero_id")
   tabla     TablaProtegida
   sedeId    String         @map("sede_id")
-
-  tercero Tercero @relation(fields: [terceroId], references: [id], onDelete: Cascade)
-  sede    Sede    @relation(fields: [sedeId], references: [id])
+  sede      Sede           @relation(fields: [sedeId], references: [id])
+  tercero   Tercero        @relation(fields: [terceroId], references: [id], onDelete: Cascade)
 
   @@id([terceroId, tabla, sedeId])
   @@map("acceso_datos")
 }
 
-model Hospital {
-  id     String @id @default(uuid())
-  nombre String
-  ciudad String?
+model Tercero {
+  id                   String                    @id @default(uuid())
+  nombreCompleto       String                    @map("nombre_completo")
+  correo               String?
+  passwordHash         String?                   @map("password_hash")
+  perfilId             String?                   @map("perfil_id")
+  sedeId               String?                   @map("sede_id")
+  activo               Boolean                   @default(true)
+  cargoId              String?                   @map("cargo_id")
+  ciudadId             String?                   @map("ciudad_id")
+  creadoEn             DateTime?                 @map("creado_en")
+  creadoPor            String?                   @map("creado_por")
+  estadoId             String?                   @map("estado_id")
+  fechaNacimiento      DateTime?                 @map("fecha_nacimiento") @db.Date
+  fotoPerfilUrl        String?                   @map("foto_perfil_url")
+  grupo                String?
+  idLegacy             String?                   @unique @map("id_legacy")
+  mir                  Boolean?                  @default(false)
+  nombreComercial      String?                   @map("nombre_comercial")
+  observaciones        String?
+  paisId               String?                   @map("pais_id")
+  primerApellido       String?                   @map("primer_apellido")
+  primerNombre         String?                   @map("primer_nombre")
+  segundoApellido      String?                   @map("segundo_apellido")
+  segundoNombre        String?                   @map("segundo_nombre")
+  tarifaId             String?                   @map("tarifa_id")
+  tipoContacto         Boolean?                  @map("tipo_contacto")
+  tipoPersona          Boolean?                  @map("tipo_persona")
+  accesoDatos              AccesoDato[]
+  datosFiscales            DatosFiscales?
+  hospital                 Hospital?
+  programacionMedicos      ProgramacionMedico[]
+  programacionTecnicos     ProgramacionTecnico[]
+  clasificaciones          TerceroClasificacion[]
+  sedesAutorizaciones      TerceroSedeAutorizacion[]
+  sedesDisponibles         TerceroSedeDisponible[]
+  remisionesUsuario        Remision[]               @relation("RemisionUsuario")
+  remisionesEmpresa        Remision[]               @relation("RemisionEmpresa")
+  remisionesResponsable    Remision[]               @relation("RemisionResponsable")
+  remisionesCliente        Remision[]               @relation("RemisionCliente")
+  sistemas                 Sistema[]
+  productosUsuario         Producto[]               @relation("ProductoUsuario")
+  productosProveedor       Producto[]               @relation("ProductoProveedor")
+  facturasGeneradaPor      Factura[]                @relation("FacturaGeneradaPor")
+  facturasEmpresa          Factura[]                @relation("FacturaEmpresa")
+  facturasCliente          Factura[]                @relation("FacturaCliente")
+  notasCreditoAplicadaPor  NotaCredito[]            @relation("NotaCreditoAplicadaPor")
+  detTecnicosTecnico       DetTecnico[]             @relation("DetTecnicoTecnico")
+  valConsumosUsuario           ValConsumo[]             @relation("ValConsumoUsuario")
+  valConsumosAutorizador       ValConsumo[]             @relation("ValConsumoAutorizador")
+  valConsumoLotesRegistradoPor ValConsumoLote[]         @relation("ValConsumoLoteRegistradoPor")
+  remTecnicosTecnico           RemTecnico[]             @relation("RemTecnicoTecnico")
+  remTecnicosRegistradoPor     RemTecnico[]             @relation("RemTecnicoRegistradoPor")
+  remTecnicosEditadoPor        RemTecnico[]             @relation("RemTecnicoEditadoPor")
+  cargo                    Cargo?                   @relation(fields: [cargoId], references: [id])
+  ciudad                   Ciudad?                  @relation(fields: [ciudadId], references: [id])
+  estado                   Estado?                  @relation(fields: [estadoId], references: [id])
+  pais                     Pais?                    @relation(fields: [paisId], references: [id])
+  perfil                   Perfil?                  @relation(fields: [perfilId], references: [id])
+  sede                     Sede?                    @relation(fields: [sedeId], references: [id])
+  tarifa                   Tarifa?                  @relation(fields: [tarifaId], references: [id])
 
+  @@map("terceros")
+}
+
+model TerceroClasificacion {
+  terceroId     String               @map("tercero_id")
+  clasificacion ClasificacionTercero
+  tercero       Tercero              @relation(fields: [terceroId], references: [id], onDelete: Cascade)
+
+  @@id([terceroId, clasificacion])
+  @@map("tercero_clasificaciones")
+}
+
+model DatosFiscales {
+  id                 String         @id @default(uuid())
+  terceroId          String         @unique @map("tercero_id")
+  rfc                String?
+  razonSocial        String?        @map("razon_social")
+  regimenFiscalId    String?        @map("regimen_fiscal_id")
+  codigoPostalFiscal String?        @map("codigo_postal_fiscal")
+  usoCfdiId          String?        @map("uso_cfdi_id")
+  direccionFiscal    String?        @map("direccion_fiscal")
+  regimenFiscal      RegimenFiscal? @relation(fields: [regimenFiscalId], references: [id])
+  tercero            Tercero        @relation(fields: [terceroId], references: [id], onDelete: Cascade)
+  usoCfdi            UsoCfdi?       @relation(fields: [usoCfdiId], references: [id])
+
+  @@map("datos_fiscales")
+}
+
+model TerceroSedeDisponible {
+  terceroId String  @map("tercero_id")
+  sedeId    String  @map("sede_id")
+  sede      Sede    @relation(fields: [sedeId], references: [id])
+  tercero   Tercero @relation(fields: [terceroId], references: [id], onDelete: Cascade)
+
+  @@id([terceroId, sedeId])
+  @@map("tercero_sedes_disponibles")
+}
+
+model TerceroSedeAutorizacion {
+  terceroId String  @map("tercero_id")
+  sedeId    String  @map("sede_id")
+  sede      Sede    @relation(fields: [sedeId], references: [id])
+  tercero   Tercero @relation(fields: [terceroId], references: [id], onDelete: Cascade)
+
+  @@id([terceroId, sedeId])
+  @@map("tercero_sedes_autorizaciones")
+}
+
+model Hospital {
+  id             String         @id @default(uuid())
+  nombre         String
+  ciudadId       String?        @map("ciudad_id")
+  terceroId      String?        @unique @map("tercero_id")
+  ciudadCat      Ciudad?        @relation(fields: [ciudadId], references: [id])
+  tercero        Tercero?       @relation(fields: [terceroId], references: [id])
   programaciones Programacion[]
 
   @@map("hospitales")
 }
 
 model Programacion {
-  id            String    @id @default(uuid())
-  idLegacy      String?   @unique @map("id_legacy")
-  creadoPor     String?   @map("creado_por")
-  createdAt     DateTime  @default(now()) @map("created_at")
-
-  fechaQx       DateTime? @map("fecha_qx") @db.Date
-  horaQx        String?   @map("hora_qx")
-  sedeId        String?   @map("sede_id")
-  hospitalId    String?   @map("hospital_id")
-  consumo            String?
-  observaciones      String?
-  numProgram         String?   @map("num_program")
-  folioRequisicion   String?   @map("folio_requisicion")
-  avance             Decimal?  @db.Decimal(5, 2)
-
-  switch               Boolean?
-  enviarProgramacion   Boolean? @map("enviar_programacion")
-  adjuntarDocumento    String?  @map("adjuntar_documento")
-  cotizacionUrl        String?  @map("cotizacion_url")
-
-  // Banderas de estado (activadas manualmente)
-  sinRemision       Boolean @default(false) @map("sin_remision")
-  consumoNoValidado Boolean @default(false) @map("consumo_no_validado")
-  sinComision       Boolean @default(false) @map("sin_comision")
-  cerrada           Boolean @default(false)
-
-  // Financiero
-  montoTecnicos       Decimal? @map("monto_tecnicos") @db.Decimal(15, 2)
-  montoInversionistas Decimal? @map("monto_inversionistas") @db.Decimal(15, 2)
-  montoPlus           Decimal? @map("monto_plus") @db.Decimal(15, 2)
-
-  sede     Sede?     @relation(fields: [sedeId], references: [id])
-  hospital Hospital? @relation(fields: [hospitalId], references: [id])
-  medicos  ProgramacionMedico[]
-  tecnicos ProgramacionTecnico[]
+  id                  String                @id
+  creadoPor           String?               @map("creado_por")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  fechaQx             DateTime?             @map("fecha_qx") @db.Date
+  horaQx              String?               @map("hora_qx")
+  sedeId              String?               @map("sede_id")
+  hospitalId          String?               @map("hospital_id")
+  consumo             String?
+  observaciones       String?
+  numProgram          String?               @map("num_program")
+  avance              Decimal?              @db.Decimal(5, 2)
+  sinRemision         Boolean               @default(false) @map("sin_remision")
+  consumoNoValidado   Boolean               @default(false) @map("consumo_no_validado")
+  sinComision         Boolean               @default(false) @map("sin_comision")
+  cerrada             Boolean               @default(false)
+  montoTecnicos       Decimal?              @map("monto_tecnicos") @db.Decimal(15, 2)
+  montoInversionistas Decimal?              @map("monto_inversionistas") @db.Decimal(15, 2)
+  montoPlus           Decimal?              @map("monto_plus") @db.Decimal(15, 2)
+  adjuntarDocumento   String?               @map("adjuntar_documento")
+  cotizacionUrl       String?               @map("cotizacion_url")
+  enviarProgramacion  Int?                  @map("enviar_programacion")
+  switch              Boolean?
+  folioRequisicion    String?               @map("folio_requisicion")
+  medicos             ProgramacionMedico[]
+  tecnicos            ProgramacionTecnico[]
+  remisiones          Remision[]
+  detConsumos         DetConsumo[]
+  detTecnicos         DetTecnico[]
+  valConsumos         ValConsumo[]
+  detTecnicoDetalles  DetTecnicoDetalle[]
+  remTecnicos         RemTecnico[]
+  hospital            Hospital?             @relation(fields: [hospitalId], references: [id])
+  sede                Sede?                 @relation(fields: [sedeId], references: [id])
 
   @@map("programaciones")
 }
 
 model ProgramacionMedico {
-  programacionId String @map("programacion_id")
-  medicoId       String @map("medico_id")
-
-  programacion Programacion @relation(fields: [programacionId], references: [id], onDelete: Cascade)
-  medico       Tercero      @relation(fields: [medicoId], references: [id])
+  programacionId String       @map("programacion_id")
+  medicoId       String       @map("medico_id")
+  medico         Tercero      @relation(fields: [medicoId], references: [id])
+  programacion   Programacion @relation(fields: [programacionId], references: [id], onDelete: Cascade)
 
   @@id([programacionId, medicoId])
   @@map("programacion_medicos")
 }
 
 model ProgramacionTecnico {
-  programacionId String @map("programacion_id")
-  tecnicoId      String @map("tecnico_id")
-
-  programacion Programacion @relation(fields: [programacionId], references: [id], onDelete: Cascade)
-  tecnico      Tercero      @relation(fields: [tecnicoId], references: [id])
+  programacionId String       @map("programacion_id")
+  tecnicoId      String       @map("tecnico_id")
+  programacion   Programacion @relation(fields: [programacionId], references: [id], onDelete: Cascade)
+  tecnico        Tercero      @relation(fields: [tecnicoId], references: [id])
 
   @@id([programacionId, tecnicoId])
   @@map("programacion_tecnicos")
+}
+
+model Remision {
+  id                     String    @id
+  usuarioId              String?   @map("usuario_id")
+  creadoEn               DateTime? @map("creado_en")
+  programacionId         String?   @map("programacion_id")
+  tarifaId               String?   @map("tarifa_id")
+  numRemision            String?   @map("num_remision")
+  empresaId              String?   @map("empresa_id")
+  paciente               String?
+  cirugiaRealizada       String?   @map("cirugia_realizada")
+  impuestos              String?
+  cubrimientoId          String?   @map("cubrimiento_id")
+  responsableEconomicoId String?   @map("responsable_economico_id")
+  anestesiologo          String?
+  tieneDcto              Boolean   @default(false) @map("tiene_dcto")
+  porcentajeDcto         Decimal?  @map("porcentaje_dcto")  @db.Decimal(5,2)
+  vrDctoPesos            Decimal?  @map("vr_dcto_pesos")    @db.Decimal(15,2)
+  estado                 String?
+  firma                  String?
+  imagen                 String?
+  status                 Boolean   @default(true)
+  vrFactura              Decimal?  @map("vr_factura")       @db.Decimal(15,2)
+  diferencia             Decimal?                           @db.Decimal(15,2)
+  tieneCotizacion        Boolean   @default(false) @map("tiene_cotizacion")
+  cotizacion             String?
+  actualizarFolio        Boolean?  @map("actualizar_folio")
+  tieneFactura           Boolean   @default(false) @map("tiene_factura")
+  estadoFactura          String?   @map("estado_factura")
+  noFactura              String?   @map("no_factura")
+  fechaFacturacion       DateTime? @map("fecha_facturacion") @db.Date
+  facturadoPor           String?   @map("facturado_por")
+  clienteId              String?   @map("cliente_id")
+  switch                 Boolean?
+  contador               Int?
+  numFactura             String?   @map("num_factura")
+  cxc                    Boolean?
+  aseguradoraCountry     String?   @map("aseguradora_country")
+
+  usuario              Tercero?      @relation("RemisionUsuario",     fields: [usuarioId],              references: [id])
+  programacion         Programacion? @relation(                       fields: [programacionId],         references: [id])
+  tarifa               Tarifa?       @relation("RemisionTarifa",      fields: [tarifaId],               references: [id])
+  empresa              Tercero?      @relation("RemisionEmpresa",     fields: [empresaId],              references: [id])
+  cubrimiento          Tarifa?       @relation("RemisionCubrimiento", fields: [cubrimientoId],          references: [id])
+  responsableEconomico Tercero?      @relation("RemisionResponsable", fields: [responsableEconomicoId], references: [id])
+  cliente              Tercero?      @relation("RemisionCliente",     fields: [clienteId],              references: [id])
+
+  detConsumos          DetConsumo[]
+  facturas             Factura[]
+  detTecnicos          DetTecnico[]
+  valConsumos          ValConsumo[]
+  detTecnicoDetalles   DetTecnicoDetalle[]
+  remTecnicos          RemTecnico[]
+
+  @@map("remisiones")
+}
+
+model DetConsumo {
+  id              String   @id
+  programacionId  String?  @map("programacion_id")
+  remisionId      String?  @map("remision_id")
+  referencia      String?
+  productoId      String?  @map("producto_id")
+  cantidad        Decimal? @db.Decimal(10, 2)
+  valorUnitario   Decimal? @map("valor_unitario") @db.Decimal(15, 2)
+  valor           Decimal? @db.Decimal(15, 2)
+  cantidadUsada   Decimal? @map("cantidad_usada") @db.Decimal(10, 2)
+  observaciones   String?
+  eliminar        Boolean  @default(false)
+  folioValidacion String?  @map("folio_validacion")
+  switch          Boolean?
+
+  programacion Programacion? @relation(fields: [programacionId], references: [id])
+  remision     Remision?     @relation(fields: [remisionId],     references: [id])
+  producto     Producto?     @relation(                          fields: [productoId], references: [id])
+  valConsumos  ValConsumo[]
+
+  @@map("det_consumos")
+}
+
+model Lote {
+  id             String    @id @map("id_lote")
+  lote           String?
+  fechaRegistro  DateTime? @map("fecha_registro")  @db.Date
+  fechaCaducidad DateTime? @map("fecha_caducidad") @db.Date
+  fechaAlerta    DateTime? @map("fecha_alerta")    @db.Date
+
+  valConsumoLotes ValConsumoLote[]
+
+  @@map("lotes")
+}
+
+model ObjetoImpuesto {
+  id          String     @id
+  descripcion String?
+  productos   Producto[]
+
+  @@map("objetos_impuesto")
+}
+
+model UnidadMedidaSat {
+  id        String     @id @map("id_udem")
+  udem      String?
+  productos Producto[]
+
+  @@map("unidades_medida_sat")
+}
+
+model Marca {
+  id        String     @id @map("id_marca")
+  marca     String?
+  productos Producto[]
+
+  @@map("marcas")
+}
+
+model Categoria {
+  categoria    String     @id
+  tarifas      Boolean    @default(false)
+  depreciacion Boolean    @default(false) @map("depreciacion")
+  productos    Producto[]
+
+  @@map("categorias")
+}
+
+model Sistema {
+  id            String     @id @map("id_producto")
+  usuarioId     String?    @map("usuario_id")
+  marcaDeTiempo DateTime?  @map("marca_de_tiempo")
+  sistema       String?
+  usuario       Tercero?   @relation(fields: [usuarioId], references: [id])
+  productos     Producto[]
+  valConsumos   ValConsumo[]
+
+  @@map("sistemas")
+}
+
+model Producto {
+  id                       String    @id @map("id_producto")
+  usuarioId                String?   @map("usuario_id")
+  marcaDeTiempo            DateTime? @map("marca_de_tiempo")
+  sistemaId                String?   @map("sistema_id")
+  referencia               String?
+  nombre                   String?
+  categoriaId              String?   @map("categoria_id")
+  importado                Boolean   @default(false)
+  proveedorId              String?   @map("proveedor_id")
+  costoUsd                 Decimal?  @map("costo_usd")                @db.Decimal(15, 2)
+  costoMxn                 Decimal?  @map("costo_mxn")                @db.Decimal(15, 2)
+  distribuidor             Decimal?                                    @db.Decimal(15, 2)
+  particulares             Decimal?                                    @db.Decimal(15, 2)
+  hospitales               Decimal?                                    @db.Decimal(15, 2)
+  aseguradora              Decimal?                                    @db.Decimal(15, 2)
+  orden                    Int?
+  imagen                   String?
+  observaciones            String?
+  marcaId                  String?   @map("marca_id")
+  sePuedeComprar           Boolean   @default(false) @map("se_puede_comprar")
+  sePuedeVender            Boolean   @default(false) @map("se_puede_vender")
+  manejaRequisiciones      Boolean   @default(false) @map("maneja_requisiciones")
+  manejaLote               Boolean   @default(false) @map("maneja_lote")
+  actualizar               Boolean?
+  denegar                  Boolean?
+  conBaseAId               String?   @map("con_base_a_id")
+  anosVidaUtil             Decimal?  @map("anos_vida_util")            @db.Decimal(10, 2)
+  min                      Int?
+  h0                       Decimal?  @db.Decimal(10, 2)
+  h1                       Decimal?  @db.Decimal(10, 2)
+  manejaExistencias        Boolean   @default(false) @map("maneja_existencias")
+  udi                      Boolean?
+  seReusa                  Boolean   @default(false) @map("se_reusa")
+  generaListaPrecios       Boolean   @default(false) @map("genera_lista_precios")
+  seCotiza                 Boolean   @default(false) @map("se_cotiza")
+  crearListaPrecios        String?   @map("crear_lista_precios")
+  actualizarCostos         String?   @map("actualizar_costos")
+  controlarStockRemisiones Boolean   @default(false) @map("controlar_stock_remisiones")
+  udemId                   String?   @map("udem_id")
+  codigoSat                String?   @map("codigo_sat")
+  objetoImpuestoId         String?   @map("objeto_impuesto_id")
+  registroSanitario        String?   @map("registro_sanitario")
+  fechaVencimiento         DateTime? @map("fecha_vencimiento")         @db.Date
+
+  usuario        Tercero?         @relation("ProductoUsuario",   fields: [usuarioId],       references: [id])
+  proveedor      Tercero?         @relation("ProductoProveedor", fields: [proveedorId],      references: [id])
+  sistema        Sistema?         @relation(                     fields: [sistemaId],        references: [id])
+  categoria      Categoria?       @relation(                     fields: [categoriaId],      references: [categoria])
+  marca          Marca?           @relation(                     fields: [marcaId],          references: [id])
+  conBaseA       Producto?        @relation("ProductoBase",      fields: [conBaseAId],       references: [id])
+  productosBase  Producto[]       @relation("ProductoBase")
+  udem           UnidadMedidaSat? @relation(                     fields: [udemId],           references: [id])
+  objetoImpuesto ObjetoImpuesto?  @relation(                     fields: [objetoImpuestoId], references: [id])
+  detConsumos        DetConsumo[]
+  valConsumos        ValConsumo[]
+  detTecnicoDetalles DetTecnicoDetalle[]
+
+  @@map("productos")
+}
+
+model Factura {
+  id               String    @id @map("id_factura")
+  marcaDeTiempo    DateTime? @map("marca_de_tiempo")
+  fechaCreacion    DateTime? @map("fecha_creacion")    @db.Date
+  generadaPorId    String?   @map("generada_por_id")
+  remisionId       String?   @map("remision_id")
+  empresaId        String?   @map("empresa_id")
+  clienteId        String?   @map("cliente_id")
+  folioFacturacion String?   @map("folio_facturacion")
+  doctor           String?
+  hospital         String?
+  paciente         String?
+  fechaCirugia     DateTime? @map("fecha_cirugia")     @db.Date
+  descuentoGlobal  Decimal?  @map("descuento_global")  @db.Decimal(15, 2)
+  sedeId           String?   @map("sede_id")
+  observaciones    String?
+  impuestos        String?
+  fechaFactura     DateTime? @map("fecha_factura")     @db.Date
+
+  generadaPor Tercero?  @relation("FacturaGeneradaPor", fields: [generadaPorId], references: [id])
+  empresa     Tercero?  @relation("FacturaEmpresa",     fields: [empresaId],     references: [id])
+  cliente     Tercero?  @relation("FacturaCliente",     fields: [clienteId],     references: [id])
+  remision    Remision? @relation(                      fields: [remisionId],    references: [id])
+  sede        Sede?     @relation(                      fields: [sedeId],        references: [id])
+  notasCredito NotaCredito[]
+
+  @@map("facturas")
+}
+
+model NotaCredito {
+  id               String    @id @map("id_nota_credito")
+  marcaTiempo      DateTime? @map("marca_tiempo")
+  fechaRemision    DateTime? @map("fecha_remision")     @db.Date
+  fechaNotaCredito DateTime? @map("fecha_nota_credito") @db.Date
+  facturaId        String?   @map("factura_id")
+  total            Decimal?  @db.Decimal(15, 2)
+  formaDescuento   String?   @map("forma_descuento")
+  valor            Decimal?  @db.Decimal(15, 2)
+  porcentaje       Decimal?  @db.Decimal(5, 2)
+  aplicadaPorId    String?   @map("aplicada_por_id")
+  notas            String?
+  valorNc          Decimal?  @map("valor_nc")           @db.Decimal(15, 2)
+
+  factura     Factura? @relation(                           fields: [facturaId],     references: [id])
+  aplicadaPor Tercero? @relation("NotaCreditoAplicadaPor",  fields: [aplicadaPorId], references: [id])
+
+  @@map("notas_credito")
+}
+
+model DetTecnico {
+  id               String    @id @map("id_det_tecnico")
+  programacionId   String?   @map("programacion_id")
+  categoria        String?
+  tipo             String?
+  tecnicoId        String?   @map("tecnico_id")
+  vrComision       Decimal?  @map("vr_comision")        @db.Decimal(15, 2)
+  observaciones    String?
+  estadoActual     Boolean?  @map("estado_actual")
+  esProgramacion   Boolean?  @map("es_programacion")
+  remisionId       String?   @map("remision_id")
+  quieresDesglosar Boolean?  @map("quieres_desglosar")
+  seleccioneTipo   String?   @map("seleccione_tipo")
+  agregarIva       Boolean?  @map("agregar_iva")
+  cargarPorcentaje Decimal?  @map("cargar_porcentaje")  @db.Decimal(5, 2)
+
+  programacion Programacion? @relation(                       fields: [programacionId], references: [id])
+  tecnico      Tercero?      @relation("DetTecnicoTecnico",   fields: [tecnicoId],      references: [id])
+  remision     Remision?     @relation(                       fields: [remisionId],     references: [id])
+  detalles     DetTecnicoDetalle[]
+
+  @@map("det_tecnicos")
+}
+
+model ValConsumo {
+  id                   String    @id @map("id_val_consumo")
+  usuarioId            String?   @map("usuario_id")
+  marcaTiempo          DateTime? @map("marca_tiempo")
+  programacionId       String?   @map("programacion_id")
+  remisionId           String?   @map("remision_id")
+  numeroOC             String?   @map("numero_oc")
+  detConsumoId         String?   @map("det_consumo_id")
+  sedeConsumoId        String?   @map("sede_consumo_id")
+  existencia           Int?
+  existenciaAlmacen    Int?      @map("existencia_almacen")
+  existenciaContenedor Int?      @map("existencia_contenedor")
+  lote                 String?
+  prodRealConsumido    Boolean?  @map("prod_real_consumido")
+  productoId           String?   @map("producto_id")
+  prodDeTspine         Boolean?  @map("prod_de_tspine")
+  almacenPz            Int?      @map("almacen_pz")
+  contenedorPz         Int?      @map("contenedor_pz")
+  sistemaId            String?   @map("sistema_id")
+  observacionesAlm     String?   @map("observaciones_alm")
+  eliminar             Boolean   @default(false)
+  idoc                 String?
+  costoActual          Decimal?  @map("costo_actual")          @db.Decimal(15, 2)
+  idDetConsumoValidado String?   @map("id_det_consumo_validado")
+  estadoAutorizacion   String?   @map("estado_autorizacion")
+  motivo               String?
+  fechaAutorizacion    DateTime? @map("fecha_autorizacion")
+  usuarioAutorizadorId String?   @map("usuario_autorizador_id")
+  sedeUsuarioId        String?   @map("sede_usuario_id")
+  seCompra             Boolean?  @map("se_compra")
+  metodoPagoId         String?   @map("metodo_pago_id")
+
+  usuario            Tercero?      @relation("ValConsumoUsuario",     fields: [usuarioId],            references: [id])
+  usuarioAutorizador Tercero?      @relation("ValConsumoAutorizador", fields: [usuarioAutorizadorId],  references: [id])
+  programacion       Programacion? @relation(                         fields: [programacionId],        references: [id])
+  remision           Remision?     @relation(                         fields: [remisionId],            references: [id])
+  detConsumo         DetConsumo?   @relation(                         fields: [detConsumoId],          references: [id])
+  sedeConsumo        Sede?         @relation("ValConsumoSedeConsumo", fields: [sedeConsumoId],         references: [id])
+  sedeUsuario        Sede?         @relation("ValConsumoSedeUsuario", fields: [sedeUsuarioId],         references: [id])
+  producto           Producto?     @relation(                         fields: [productoId],            references: [id])
+  sistema            Sistema?      @relation(                         fields: [sistemaId],             references: [id])
+  metodoPago         FormaPago?    @relation(                         fields: [metodoPagoId],          references: [id])
+  lotes              ValConsumoLote[]
+
+  @@map("val_consumo")
+}
+
+model DetTecnicoDetalle {
+  id             String   @id @map("id_det_tecnico_detalle")
+  detTecnicoId   String?  @map("det_tecnico_id")
+  programacionId String?  @map("programacion_id")
+  remisionId     String?  @map("remision_id")
+  productoId     String?  @map("producto_id")
+  valor          Decimal? @db.Decimal(15, 2)
+
+  detTecnico   DetTecnico?   @relation(fields: [detTecnicoId],   references: [id])
+  programacion Programacion? @relation(fields: [programacionId], references: [id])
+  remision     Remision?     @relation(fields: [remisionId],     references: [id])
+  producto     Producto?     @relation(fields: [productoId],     references: [id])
+
+  @@map("det_tecnicos_detalles")
+}
+
+model Almacen {
+  id      String  @id @map("id_almacen")
+  nombre  String?
+  sedeId  String? @map("sede_id")
+  tipo    String?
+
+  sede  Sede? @relation(fields: [sedeId], references: [id])
+  lotes ValConsumoLote[]
+
+  @@map("almacenes")
+}
+
+model ValConsumoLote {
+  id              String    @id @map("id_val_consumo_lote")
+  valConsumoId    String?   @map("val_consumo_id")
+  loteId          String?   @map("lote_id")
+  cantidad        Int?
+  sedeId          String?   @map("sede_id")
+  almacenId       String?   @map("almacen_id")
+  registradoPorId String?   @map("registrado_por_id")
+  marcaTiempo     DateTime? @map("marca_tiempo")
+
+  valConsumo    ValConsumo? @relation(fields: [valConsumoId],    references: [id])
+  lote          Lote?       @relation(fields: [loteId],          references: [id])
+  sede          Sede?       @relation(fields: [sedeId],          references: [id])
+  almacen       Almacen?    @relation(fields: [almacenId],       references: [id])
+  registradoPor Tercero?    @relation("ValConsumoLoteRegistradoPor", fields: [registradoPorId], references: [id])
+
+  @@map("val_consumo_lotes")
+}
+
+model RemTecnico {
+  id              String    @id @map("id_tecnico")
+  programacionId  String?   @map("programacion_id")
+  remisionId      String?   @map("remision_id")
+  tecnicoId       String?   @map("tecnico_id")
+  registradoPorId String?   @map("registrado_por_id")
+  editadoPorId    String?   @map("editado_por_id")
+  fechaRegistro   DateTime? @map("fecha_registro")
+  ultimaEdicion   DateTime? @map("ultima_edicion")
+
+  programacion  Programacion? @relation(fields: [programacionId], references: [id])
+  remision      Remision?     @relation(fields: [remisionId],     references: [id])
+  tecnico       Tercero?      @relation("RemTecnicoTecnico",        fields: [tecnicoId],       references: [id])
+  registradoPor Tercero?      @relation("RemTecnicoRegistradoPor",  fields: [registradoPorId], references: [id])
+  editadoPor    Tercero?      @relation("RemTecnicoEditadoPor",     fields: [editadoPorId],    references: [id])
+
+  @@map("rem_tecnicos")
+}
+
+enum ReglaCrud {
+  READ_ONLY
+  ADDS_AND_UPDATES
+  ALL_CHANGES
+}
+
+enum TablaProtegida {
+  Cotizacion
+  Gastos
+  ProgramacionPagos
+  PagosEjecucion
+}
+
+enum ClasificacionTercero {
+  PARTICULAR
+  DISTRIBUIDOR
+  ASEGURADORA
+  CLIENTE
+  EMPLEADO
+  HOSPITAL
+  DOCTOR
+  COMISIONISTA
+  INVERSIONISTA
+  EMPRESA
+  PROVEEDOR
+  SEDE
+  ALMACEN
+  GRUPO
+  OTROS
 }

@@ -6,5 +6,4 @@ export class UpdateFlagsDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() consumoNoValidado?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() sinComision?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() cerrada?: boolean;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() alertaConsumos?: boolean;
 }

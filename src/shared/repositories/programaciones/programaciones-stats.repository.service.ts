@@ -21,7 +21,7 @@ export class ProgramacionesStatsRepositoryService {
 
     if (query.search) {
       where.OR = [
-        { idLegacy: { contains: query.search, mode: 'insensitive' } },
+        { id: { contains: query.search, mode: 'insensitive' } },
         { hospital: { nombre: { contains: query.search, mode: 'insensitive' } } },
         { medicos: { some: { medico: { nombreCompleto: { contains: query.search, mode: 'insensitive' } } } } },
       ];

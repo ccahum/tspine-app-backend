@@ -6,6 +6,7 @@ import { AuthorizationModule } from './commons/authorization/authorization.modul
 import { JwtAuthGuard } from './commons/authorization/guards/jwt-auth.guard';
 import { AuthModule } from './api/auth/auth.module';
 import { ProgramacionesModule } from './api/operacion/programaciones/programaciones.module';
+import { RemisionesModule } from './api/operacion/remisiones/remisiones.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { ProgramacionesModule } from './api/operacion/programaciones/programacio
     AuthorizationModule,
     AuthModule,
     ProgramacionesModule,
+    RemisionesModule,
   ],
   providers: [
     {

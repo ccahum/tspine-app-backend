@@ -12,16 +12,12 @@ async function main() {
     create: { id: 'SA', nombre: 'Super Admin', reglas: 'ALL_CHANGES' },
   });
 
-  await prisma.tercero.upsert({
-    where: { correo: 'admin@tspine.com' },
-    update: {},
-    create: {
-      nombreCompleto: 'Admin TSpine',
-      correo: 'admin@tspine.com',
-      passwordHash,
-      perfilId: 'SA',
-    },
-  });
+  const adminExiste = await prisma.tercero.findFirst({ where: { correo: 'admin@tspine.com' } });
+  if (!adminExiste) {
+    await prisma.tercero.create({
+      data: { nombreCompleto: 'Admin TSpine', correo: 'admin@tspine.com', passwordHash, perfilId: 'SA' },
+    });
+  }
 
   console.log('Seed ejecutado correctamente');
 }

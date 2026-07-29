@@ -1,5 +1,13 @@
 node_modules
-# Keep environment variables out of version control
+dist
+logs
+coverage
+
+# Environment variables
 .env
+.env.prod
+
+# Google credentials (never commit)
+google-credentials.json
 
 /generated/prisma

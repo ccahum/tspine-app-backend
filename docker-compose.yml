@@ -1,6 +1,7 @@
+# Dev local — solo PostgreSQL. NestJS corre con: npm run start:dev
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: tspine
       POSTGRES_PASSWORD: tspine123
@@ -9,6 +10,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tspine -d tspine_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:

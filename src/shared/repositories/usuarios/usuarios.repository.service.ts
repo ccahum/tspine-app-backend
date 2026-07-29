@@ -7,7 +7,7 @@ export class UsuariosRepositoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findByCorreo(correo: string): Promise<Tercero | null> {
-    return this.prisma.tercero.findUnique({
+    return this.prisma.tercero.findFirst({
       where: { correo },
       include: { perfil: true, sede: true },
     });
