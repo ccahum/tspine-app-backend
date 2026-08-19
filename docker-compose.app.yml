@@ -1,0 +1,58 @@
+# App genérica (backend + postgres) — el MISMO archivo sirve para cualquier ambiente
+# (QA, producción, etc.). Lo que diferencia a cada ambiente es el nombre de proyecto (-p)
+# y el archivo de variables (--env-file), no el compose file.
+#
+# Uso:
+#   docker network create tspine-shared   (una sola vez, si no existe todavía)
+#   docker compose -p qa   --env-file .env.qa   -f docker-compose.app.yml up -d --build
+#   docker compose -p prod --env-file .env.prod -f docker-compose.app.yml up -d --build
+#
+# El nombre de proyecto (-p) le pone el prefijo a contenedores/redes/volúmenes de Docker,
+# así "qa" y "prod" pueden convivir en el mismo servidor sin chocar entre sí.
+#
+# El backend NO publica su puerto directo al host — solo es alcanzable a través de la red
+# compartida "tspine-shared", con un alias predecible (${ENV_NAME}-backend) que Caddy usa
+# para encontrarlo sin importar cómo Compose haya nombrado el contenedor internamente.
+services:
+  backend:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      LOG_LEVEL: ${LOG_LEVEL}
+      FORMAT_LOG: ${FORMAT_LOG}
+      DATABASE_URL: postgresql://tspine:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      default:
+      tspine-shared:
+        aliases:
+          - ${ENV_NAME}-backend
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tspine
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tspine -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
+
+networks:
+  tspine-shared:
+    external: true

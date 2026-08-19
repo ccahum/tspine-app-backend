@@ -1,0 +1,15 @@
+# Proxy reverso compartido del Droplet — un bloque por subdominio/ambiente.
+# Caddy genera y renueva certificados HTTPS automáticamente (Let's Encrypt) para cada uno.
+
+qa-api.luminar-tspine.com {
+	# El webhook de Google Chat queda fuera del candado — Google no tiene (ni puede tener)
+	# el usuario/contraseña, y ese endpoint ya es público a nivel de la aplicación (@Public()).
+	@notWebhook {
+		not path /integraciones/google-chat/*
+	}
+	basicauth @notWebhook {
+		# Generado con: docker run --rm caddy caddy hash-password --plaintext 'TU_CONTRASEÑA'
+		qa REEMPLAZAR_CON_HASH_BCRYPT
+	}
+	reverse_proxy qa-backend:3000
+}

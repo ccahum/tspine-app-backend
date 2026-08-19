@@ -1,0 +1,25 @@
+# Proxy reverso compartido de todo el Droplet (QA y, más adelante, producción).
+# Uso: docker compose up -d
+# Requiere la red externa "tspine-shared" ya creada: docker network create tspine-shared
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: tspine-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - tspine-shared
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  tspine-shared:
+    external: true
