@@ -8,9 +8,10 @@ import { PrismaClient } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 const prisma   = new PrismaClient();
-const CSV_PATH = path.join('C:\\Users\\ASUS\\Desktop\\tspine-csv', 'SistemaTspine - Facturacion.csv');
+const CSV_PATH = path.join(os.homedir(), 'Desktop', 'tspine-csv', 'SistemaTspine - Facturacion.csv');
 
 // ── Column resolver ───────────────────────────────────────────────────────────
 
@@ -43,7 +44,8 @@ function parseDateTime(val: string | undefined): Date | null {
   if (!datePart) return null;
   const [d, m, y] = datePart.split('/');
   if (!d || !m || !y) return null;
-  const iso = `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${timePart ?? '00:00:00'}Z`;
+  const timeNormalized = (timePart ?? '00:00:00').split(':').map(p => p.padStart(2, '0')).join(':');
+  const iso = `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${timeNormalized}Z`;
   const dt  = new Date(iso);
   return isNaN(dt.getTime()) ? null : dt;
 }
@@ -155,10 +157,32 @@ async function main() {
 
   const dupIds = [...idCount.entries()].filter(([, c]) => c > 1);
 
-  function printAnalysis(label: string, m: UnresolvedMap) {
+  function printAnalysis(label: string, m: UnresolvedMap, opts?: { summarizePrefix?: string; exampleCount?: number }) {
     if (m.size === 0) { console.log(`  ✓ Todos los ${label} resueltos`); return; }
+
+    const prefix = opts?.summarizePrefix;
+    const exampleCount = opts?.exampleCount ?? 2;
+
+    if (!prefix) {
+      console.log(`  ⚠ ${m.size} ${label} sin resolver:`);
+      [...m.entries()].forEach(([k, entries]) => {
+        console.log(`    - "${k}" (${entries.length} factura${entries.length > 1 ? 's' : ''})`);
+        entries.forEach(({ id, ts }) => console.log(`        · ${id.padEnd(10)}  ${ts}`));
+      });
+      return;
+    }
+
+    const resumidos = [...m.entries()].filter(([k]) => k.startsWith(prefix));
+    const detallados = [...m.entries()].filter(([k]) => !k.startsWith(prefix));
+
     console.log(`  ⚠ ${m.size} ${label} sin resolver:`);
-    [...m.entries()].forEach(([k, entries]) => {
+    if (resumidos.length > 0) {
+      console.log(`    - ${resumidos.length} referencias "${prefix}..." (sistema anterior, se omiten del detalle):`);
+      resumidos.slice(0, exampleCount).forEach(([k, entries]) => {
+        console.log(`        ej. "${k}" (${entries.length} factura${entries.length > 1 ? 's' : ''})`);
+      });
+    }
+    detallados.forEach(([k, entries]) => {
       console.log(`    - "${k}" (${entries.length} factura${entries.length > 1 ? 's' : ''})`);
       entries.forEach(({ id, ts }) => console.log(`        · ${id.padEnd(10)}  ${ts}`));
     });
@@ -168,7 +192,7 @@ async function main() {
   else { console.log(`  ⚠ ${dupIds.length} IDs duplicados:`); dupIds.forEach(([id, c]) => console.log(`    - ${id} (${c}x)`)); }
 
   printAnalysis('Generada Por', generadaPorNR);
-  printAnalysis('Remision',     remisionesNR);
+  printAnalysis('Remision',     remisionesNR, { summarizePrefix: 'RPM' });
   printAnalysis('Empresa',      empresasNR);
   printAnalysis('Cliente',      clientesNR);
   printAnalysis('Sede',         sedesNR);

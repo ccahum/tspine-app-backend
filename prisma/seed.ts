@@ -12,10 +12,18 @@ async function main() {
     create: { id: 'SA', nombre: 'Super Admin', reglas: 'ALL_CHANGES' },
   });
 
-  const adminExiste = await prisma.tercero.findFirst({ where: { correo: 'admin@tspine.com' } });
+  const adminExiste = await prisma.tercero.findFirst({ where: { correo: 'admin@tecnologiaspine.com' } });
   if (!adminExiste) {
     await prisma.tercero.create({
-      data: { nombreCompleto: 'Admin TSpine', correo: 'admin@tspine.com', passwordHash, perfilId: 'SA' },
+      data: { nombreCompleto: 'Admin TSpine', correo: 'admin@tecnologiaspine.com', passwordHash, perfilId: 'SA' },
+    });
+  }
+
+  const qaPasswordHash = await bcrypt.hash('Admin1234', 10);
+  const qaExiste = await prisma.tercero.findFirst({ where: { correo: 'qatester@tecnologiaspine.com' } });
+  if (!qaExiste) {
+    await prisma.tercero.create({
+      data: { nombreCompleto: 'QA Tester', correo: 'qatester@tecnologiaspine.com', passwordHash: qaPasswordHash, perfilId: 'SA' },
     });
   }
 

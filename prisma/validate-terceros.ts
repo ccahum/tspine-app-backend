@@ -7,11 +7,13 @@
 import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { parse } from 'csv-parse/sync';
 
 const prisma = new PrismaClient();
-const CSV_PATH      = path.join('C:\\Users\\ASUS\\Desktop\\tspine-csv', 'SistemaTspine1.0 - Terceros.csv');
-const CSV_PROG_PATH = path.join('C:\\Users\\ASUS\\Desktop\\tspine-csv', 'SistemaTspine1.0 - Programacion - Programacion.csv');
+const CSV_DIR       = path.join(os.homedir(), 'Desktop', 'tspine-csv');
+const CSV_PATH      = path.join(CSV_DIR, 'SistemaTspine1.0 - Terceros.csv');
+const CSV_PROG_PATH = path.join(CSV_DIR, 'SistemaTspine1.0 - Programacion - Programacion.csv');
 
 // ─── Column resolver ──────────────────────────────────────────────────────────
 let _colIndex: Map<string, string> | null = null;

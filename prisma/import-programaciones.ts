@@ -1,12 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { parse } from 'csv-parse/sync';
 
 const prisma = new PrismaClient();
 
 const CSV_PATH = path.join(
-  'C:\\Users\\ASUS\\Desktop\\tspine-csv',
+  os.homedir(), 'Desktop', 'tspine-csv',
   'SistemaTspine1.0 - Programacion - Programacion.csv',
 );
 
@@ -89,6 +90,11 @@ function parseList(raw: string): string[] {
 
 function cleanNombre(raw: string): string {
   return raw.replace(/\|/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** Misma regla que src/commons/date.utils.ts: hora de México guardada como si fuera UTC. */
+function nowMexico(): Date {
+  return new Date(Date.now() - 6 * 60 * 60 * 1000);
 }
 
 // ─── Normalización de ciudades ────────────────────────────────────────────────
@@ -245,13 +251,15 @@ async function main() {
     const hospitalNombre = cleanNombre(getCol(row, 'HOSPITAL')?.trim() ?? '') || null;
     const medicosNombres  = parseList(getCol(row, 'MÉDICO'));
     const tecnicosNombres = parseList(getCol(row, 'TECNICOS ASIGNADOS'));
+    const usuarioNombre  = getCol(row, 'USUARIO')?.trim() || null;
+    const creadoPorId    = usuarioNombre ? await getOrCreateTercero(usuarioNombre, terceroCache) : null;
 
     try {
       const prog = await prisma.programacion.create({
         data: {
           id,
-          creadoPor:           getCol(row, 'USUARIO')?.trim()             || null,
-          createdAt:           parseDateTime(getCol(row, 'MARCA DE TIEMPO')) ?? new Date(),
+          creadoPor:           creadoPorId,
+          createdAt:           parseDateTime(getCol(row, 'MARCA DE TIEMPO')) ?? nowMexico(),
           fechaQx:             parseDate(getCol(row, 'FECHA QX')),
           horaQx:              parseHora(getCol(row, 'HORA QX')),
           sedeId:              sedeNombre     ? slugify(sedeNombre)                      : null,

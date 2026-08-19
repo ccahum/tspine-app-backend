@@ -9,9 +9,10 @@
 import { google } from 'googleapis';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 const CREDENTIALS_PATH = path.join(__dirname, '..', 'google-credentials.json');
-const DEST_DIR         = String.raw`C:\Users\ASUS\Desktop\tspine-csv`;
+const DEST_DIR         = path.join(os.homedir(), 'Desktop', 'tspine-csv');
 
 // ── Configuración de hojas ────────────────────────────────────────────────────
 // spreadsheetId : ID del archivo de Google Sheets (parte de la URL)
@@ -75,6 +76,11 @@ const SHEETS = [
     fileName:      'SistemaTspine - Facturacion.csv',
   },
   {
+    spreadsheetId: '1VQCmRtIuI0PQxOUNgrbRDQ-e30JbD40ZZw9PW9t4zVk',
+    sheetName:     'DetalleDeLaFactura',
+    fileName:      'SistemaTspine - DetalleDeLaFactura.csv',
+  },
+  {
     spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
     sheetName:     'ValConsumo',
     fileName:      'SistemaTspine1.0 - ValConsumo.csv',
@@ -99,12 +105,135 @@ const SHEETS = [
     sheetName:     'Rem_Tecnicos',
     fileName:      'SistemaTspine1.0 - Rem_Tecnicos.csv',
   },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Requisiciones',
+    fileName:      'SistemaTspine1.0 - Requisiciones.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'DetalleREquisicion',
+    fileName:      'SistemaTspine1.0 - DetalleRequisicion.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Cuentas',
+    fileName:      'SistemaTspine1.0 - Cuentas.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Proyectos',
+    fileName:      'SistemaTspine1.0 - Proyectos.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'TiposPago',
+    fileName:      'SistemaTspine1.0 - TiposPago.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Gastos',
+    fileName:      'SistemaTspine1.0 - Gastos.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Fuentes',
+    fileName:      'SistemaTspine1.0 - Fuentes.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'DocumentosProgramacion',
+    fileName:      'SistemaTspine1.0 - DocumentosProgramacion.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Compras',
+    fileName:      'SistemaTspine1.0 - Compras.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'MovimientosDeCaja',
+    fileName:      'SistemaTspine1.0 - MovimientosDeCaja.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Mir',
+    fileName:      'SistemaTspine1.0 - MIR.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'ProgramacionPagos',
+    fileName:      'SistemaTspine1.0 - ProgramacionPagos.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'PagosEjecución',
+    fileName:      'SistemaTspine1.0 - PagosEjecucion.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'DetalleCompra',
+    fileName:      'SistemaTspine1.0 - DetalleCompra.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Entradas por compra',
+    fileName:      'SistemaTspine1.0 - EntradasPorCompra.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Abonos',
+    fileName:      'SistemaTspine1.0 - Abonos.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'ListasPrecio',
+    fileName:      'SistemaTspine1.0 - ListasPrecio.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'DetallePaquetes',
+    fileName:      'SistemaTspine1.0 - DetallePaquetes.csv',
+  },
+  {
+    spreadsheetId: '1kQZ3-7inYlxmAV8AGNL8Ckq_jmEtgWLqF_6G52KJoOs',
+    sheetName:     'Cotizacion',
+    fileName:      'SistemaTspine1.0 - Cotizacion.csv',
+  },
+  {
+    spreadsheetId: '1kQZ3-7inYlxmAV8AGNL8Ckq_jmEtgWLqF_6G52KJoOs',
+    sheetName:     'Det_Cotiza',
+    fileName:      'SistemaTspine1.0 - Det_Cotiza.csv',
+  },
   // Para agregar más pestañas de SistemaTspine1.0:
   // { spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o', sheetName: 'NombrePestaña', fileName: 'SistemaTspine1.0 - NombrePestaña.csv' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+
+// Cache de metadatos por spreadsheet: evita pedir de nuevo la lista de pestañas
+// cuando varias hojas del mismo spreadsheet ya la consultaron.
+const metaCache = new Map<string, { sheetId: number; title: string }[]>();
+
+async function getSheetsMeta(
+  sheetsApi: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+): Promise<{ sheetId: number; title: string }[]> {
+  const cached = metaCache.get(spreadsheetId);
+  if (cached) return cached;
+
+  const meta = await sheetsApi.spreadsheets.get({
+    spreadsheetId,
+    fields: 'sheets.properties(sheetId,title)',
+  });
+  const sheets = (meta.data.sheets ?? []).map(s => ({
+    sheetId: s.properties?.sheetId ?? 0,
+    title:   s.properties?.title ?? '',
+  }));
+  metaCache.set(spreadsheetId, sheets);
+  return sheets;
+}
 
 async function downloadSheet(
   authClient: any,
@@ -113,18 +242,17 @@ async function downloadSheet(
   sheetName: string | null,
   fileName: string,
 ): Promise<void> {
-  // Siempre consultar el GID real via API (evita asumir gid=0)
-  const meta = await sheetsApi.spreadsheets.get({ spreadsheetId });
+  const sheets = await getSheetsMeta(sheetsApi, spreadsheetId);
   let gid: number;
   if (sheetName) {
-    const sheet = meta.data.sheets?.find(s => s.properties?.title?.trim() === sheetName.trim());
-    if (!sheet?.properties?.sheetId && sheet?.properties?.sheetId !== 0) {
+    const sheet = sheets.find(s => s.title.trim() === sheetName.trim());
+    if (!sheet) {
       throw new Error(`Pestaña "${sheetName}" no encontrada en spreadsheet ${spreadsheetId}`);
     }
-    gid = sheet.properties.sheetId!;
+    gid = sheet.sheetId;
   } else {
     // Primera hoja del archivo
-    gid = meta.data.sheets?.[0]?.properties?.sheetId ?? 0;
+    gid = sheets[0]?.sheetId ?? 0;
   }
 
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
@@ -137,6 +265,18 @@ async function downloadSheet(
       .on('finish', resolve)
       .on('error', reject);
   });
+}
+
+// Corre `items` con un máximo de `limit` tareas concurrentes.
+async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  async function runner() {
+    while (next < items.length) {
+      const item = items[next++];
+      await worker(item);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => runner()));
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -158,20 +298,24 @@ async function main() {
   const authClient = await auth.getClient();
   const sheetsApi  = google.sheets({ version: 'v4', auth });
 
+  // Precarga los metadatos de cada spreadsheet único ANTES de paralelizar,
+  // para que las descargas concurrentes no disparen la misma consulta varias veces.
+  const spreadsheetIds = [...new Set(SHEETS.map(s => s.spreadsheetId))];
+  await Promise.all(spreadsheetIds.map(id => getSheetsMeta(sheetsApi, id)));
+
   let exitoso = 0;
   let fallido = 0;
 
-  for (const sheet of SHEETS) {
-    process.stdout.write(`  ⬇  ${sheet.fileName} ...`);
+  await runWithConcurrency(SHEETS, 6, async sheet => {
     try {
       await downloadSheet(authClient, sheetsApi, sheet.spreadsheetId, sheet.sheetName, sheet.fileName);
-      console.log(' ✓');
+      console.log(`  ⬇  ${sheet.fileName} ... ✓`);
       exitoso++;
     } catch (err: any) {
-      console.log(` ❌  ${err.message}`);
+      console.log(`  ⬇  ${sheet.fileName} ... ❌  ${err.message}`);
       fallido++;
     }
-  }
+  });
 
   console.log('\n' + '═'.repeat(60));
   console.log(`  ✓ ${exitoso} descargados   ❌ ${fallido} fallidos`);

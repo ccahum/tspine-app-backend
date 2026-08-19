@@ -10,9 +10,10 @@ import { PrismaClient } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 const prisma   = new PrismaClient();
-const CSV_PATH = path.join('C:\\Users\\ASUS\\Desktop\\tspine-csv', 'SistemaTspine1.0 - Productos.csv');
+const CSV_PATH = path.join(os.homedir(), 'Desktop', 'tspine-csv', 'SistemaTspine1.0 - Productos.csv');
 
 // ── Column resolver ───────────────────────────────────────────────────────────
 
@@ -57,7 +58,8 @@ function parseDateTime(val: string | undefined): Date | null {
   if (!datePart) return null;
   const [d, m, y] = datePart.split('/');
   if (!d || !m || !y) return null;
-  const iso = `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${timePart ?? '00:00:00'}Z`;
+  const timeNormalized = (timePart ?? '00:00:00').split(':').map(p => p.padStart(2, '0')).join(':');
+  const iso = `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${timeNormalized}Z`;
   const dt  = new Date(iso);
   return isNaN(dt.getTime()) ? null : dt;
 }
@@ -148,7 +150,7 @@ async function main() {
 
   for (const row of rows) {
     const id = getCol(row, 'ID PRODUCTO')?.trim();
-    if (!id || id === 'Producto Saldo Inicial') continue;
+    if (!id) continue;
     idCount.set(id, (idCount.get(id) ?? 0) + 1);
 
     if (!getCol(row, 'NOMBRE')?.trim()) sinNombre.push(id);
@@ -219,7 +221,7 @@ async function main() {
 
   for (const row of rows) {
     const id = getCol(row, 'ID PRODUCTO')?.trim();
-    if (!id || id === 'Producto Saldo Inicial') { omitidos++; continue; }
+    if (!id) { omitidos++; continue; }
 
     // Resolver FKs
     const usuarioRaw  = getCol(row, 'USUARIO')?.trim();

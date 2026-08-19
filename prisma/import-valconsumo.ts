@@ -12,9 +12,10 @@ import { PrismaClient } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 const prisma   = new PrismaClient();
-const CSV_PATH = path.join('C:\\Users\\ASUS\\Desktop\\tspine-csv', 'SistemaTspine1.0 - ValConsumo.csv');
+const CSV_PATH = path.join(os.homedir(), 'Desktop', 'tspine-csv', 'SistemaTspine1.0 - ValConsumo.csv');
 
 // ── Column resolver ───────────────────────────────────────────────────────────
 
@@ -47,7 +48,8 @@ function parseDateTime(val: string | undefined): Date | null {
   if (!datePart) return null;
   const [d, m, y] = datePart.split('/');
   if (!d || !m || !y) return null;
-  const iso = `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${timePart ?? '00:00:00'}Z`;
+  const timeNormalized = (timePart ?? '00:00:00').split(':').map(p => p.padStart(2, '0')).join(':');
+  const iso = `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${timeNormalized}Z`;
   const dt  = new Date(iso);
   return isNaN(dt.getTime()) ? null : dt;
 }
@@ -259,7 +261,7 @@ async function main() {
     const detConsumoRaw = getCol(row, 'DESCRIPCION')?.trim();
     const detConsumoId  = detConsumoRaw && detConsumosSet.has(detConsumoRaw) ? detConsumoRaw : null;
 
-    const sedeConsumoRaw = getCol(row, 'SEDE DE CONSUMO')?.trim();
+    const sedeConsumoRaw = getCol(row, 'SEDE CONSUMO')?.trim();
     const sedeConsumoId  = sedeConsumoRaw
       ? (sedesByNombre.get(norm(sedeConsumoRaw.toLowerCase())) ?? null)
       : null;
@@ -291,16 +293,16 @@ async function main() {
           marcaTiempo:          parseDateTime(getCol(row, 'MARCA DE TIEMPO')),
           programacionId,
           remisionId,
-          numeroOC:             getCol(row, 'NUMERO OC')?.trim()                || null,
+          numeroOC:             getCol(row, 'N° O.C.')?.trim()                  || null,
           detConsumoId,
           sedeConsumoId,
           existencia:           parseInt_(getCol(row, 'EXISTENCIA')),
           existenciaAlmacen:    parseInt_(getCol(row, 'EXISTENCIA ALMACEN')),
           existenciaContenedor: parseInt_(getCol(row, 'EXISTENCIA CONTENEDOR')),
           lote:                 getCol(row, 'LOTE')?.trim()                     || null,
-          prodRealConsumido:    parseBool(getCol(row, 'PROD REAL CONSUMIDO')),
+          prodRealConsumido:    parseBool(getCol(row, 'PROD. REAL CONSUMIDO?')),
           productoId,
-          prodDeTspine:         parseBool(getCol(row, 'PROD DE TSPINE')),
+          prodDeTspine:         parseBool(getCol(row, 'PROD_DE TSPINE?')),
           almacenPz:            parseInt_(getCol(row, 'ALMACEN PZ')),
           contenedorPz:         parseInt_(getCol(row, 'CONTENDEDOR PZ')),
           sistemaId,
@@ -308,7 +310,7 @@ async function main() {
           eliminar:             parseBool(getCol(row, 'ELIMINAR'))              ?? false,
           idoc:                 getCol(row, 'IDOC')?.trim()                     || null,
           costoActual:          parseDecimal(getCol(row, 'COSTO ACTUAL')),
-          idDetConsumoValidado: getCol(row, 'ID DET CONSUMO VALIDADO')?.trim()  || null,
+          idDetConsumoValidado: getCol(row, 'IDDETCONSUMOVALIDADO')?.trim()     || null,
           estadoAutorizacion:   getCol(row, 'ESTADO AUTORIZACION')?.trim()      || null,
           motivo:               getCol(row, 'MOTIVO')?.trim()                   || null,
           fechaAutorizacion:    parseDateTime(getCol(row, 'FECHA AUTORIZACION')),

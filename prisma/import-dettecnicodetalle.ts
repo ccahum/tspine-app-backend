@@ -8,9 +8,10 @@ import { PrismaClient } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 const prisma   = new PrismaClient();
-const CSV_PATH = path.join(String.raw`C:\Users\ASUS\Desktop\tspine-csv`, 'SistemaTspine1.0 - Det_Tecnicos_Detalle.csv');
+const CSV_PATH = path.join(os.homedir(), 'Desktop', 'tspine-csv', 'SistemaTspine1.0 - Det_Tecnicos_Detalle.csv');
 
 // ── Column resolver ───────────────────────────────────────────────────────────
 
@@ -156,11 +157,28 @@ async function main() {
     if (m.size > 5) console.log(`    ... y ${m.size - 5} más`);
   }
 
-  function printAllUnique(label: string, m: Map<string, string[]>) {
+  function printAllUnique(label: string, m: Map<string, string[]>, opts?: { summarizePrefix?: string; exampleCount?: number }) {
     if (m.size === 0) { console.log(`  ✓ Todos los ${label} resueltos`); return; }
+
     const keys = [...m.keys()];
+    const prefix = opts?.summarizePrefix;
+    const exampleCount = opts?.exampleCount ?? 2;
+
+    if (!prefix) {
+      console.log(`  ⚠ ${label} sin resolver (${keys.length} únicos, sin duplicados):`);
+      keys.forEach(k => console.log(`    - ${k}`));
+      return;
+    }
+
+    const resumidos  = keys.filter(k => k.startsWith(prefix));
+    const detallados = keys.filter(k => !k.startsWith(prefix));
+
     console.log(`  ⚠ ${label} sin resolver (${keys.length} únicos, sin duplicados):`);
-    keys.forEach(k => console.log(`    - ${k}`));
+    if (resumidos.length > 0) {
+      console.log(`    - ${resumidos.length} referencias "${prefix}..." (sistema anterior, se omiten del detalle):`);
+      resumidos.slice(0, exampleCount).forEach(k => console.log(`        ej. ${k}`));
+    }
+    detallados.forEach(k => console.log(`    - ${k}`));
   }
 
   if (dupIds.length === 0) console.log('  ✓ Sin IDs duplicados');
@@ -170,8 +188,8 @@ async function main() {
   }
 
   printAnalysis('DetTecnico', detTecnicosNR);
-  printAllUnique('Programacion', programacionesNR);
-  printAllUnique('Remision',     remisionesNR);
+  printAllUnique('Programacion', programacionesNR, { summarizePrefix: 'PM' });
+  printAllUnique('Remision',     remisionesNR,     { summarizePrefix: 'RPM' });
   printAnalysis('Producto',     productosNR);
 
   // ── [3/4] Truncar ─────────────────────────────────────────────────────────

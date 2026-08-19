@@ -24,12 +24,19 @@ const STEPS = [
   { label: 'Seed Catálogos',        script: 'seed-catalogos' },
   { label: 'Import Programaciones',  script: 'import-programaciones' },  // crea sedes, hospitales, terceros stub
   { label: 'Import Terceros',        script: 'import-terceros' },         // necesita programaciones (reconstruye junctions)
+  { label: 'Update Contacto Empresas', script: 'update-empresas-contacto' }, // celular/oficina/correo de las 3 empresas de Remisión (no vienen del CSV)
   { label: 'Import Sistemas',        script: 'import-sistemas' },         // necesita terceros
   { label: 'Import Marcas',          script: 'import-marcas' },           // sin dependencias
   { label: 'Import Lotes',           script: 'import-lotes' },            // sin dependencias
   { label: 'Import Productos',       script: 'import-productos' },        // necesita terceros, sistemas, marcas
+  { label: 'Import Listas de Precio', script: 'import-listas-precio' },   // necesita subtarifas (seed catálogos), productos
+  { label: 'Import Precios Especiales', script: 'import-precios-especiales' }, // necesita productos, terceros
+  { label: 'Import Detalle Paquetes',   script: 'import-detallepaquetes' },    // necesita paquetes de cotización (seed catálogos), productos
+  { label: 'Import Cotizaciones',       script: 'import-cotizacion' },         // necesita terceros, sedes, subtarifas, paquetes, detalle de paquetes
+  { label: 'Import Detalle Cotización', script: 'import-det-cotiza' },         // necesita cotizaciones, terceros, productos
   { label: 'Import Remisiones',      script: 'import-remisiones' },       // necesita programaciones, terceros
   { label: 'Import Facturación',     script: 'import-facturacion' },      // necesita terceros, remisiones, sedes
+  { label: 'Import Detalle Factura', script: 'import-detallefactura' },   // necesita facturas, productos, cat_iva/iva_ret/isr_ret, objetos_impuesto, unidades_medida_sat
   { label: 'Import Nota Crédito',    script: 'import-notacredito' },      // necesita facturas
   { label: 'Import Det. Técnicos',         script: 'import-dettecnicos' },         // necesita programaciones, terceros, remisiones
   { label: 'Import Det. Técnicos Detalle', script: 'import-dettecnicodetalle' },    // necesita det_tecnicos, programaciones, remisiones, productos
@@ -38,6 +45,22 @@ const STEPS = [
   { label: 'Import Val. Consumo',          script: 'import-valconsumo' },           // necesita det_consumos + pasos anteriores
   { label: 'Import Val. Consumo Lotes',    script: 'import-valconsumolotes' },      // necesita val_consumo, lotes, almacenes
   { label: 'Import Rem. Técnicos',         script: 'import-remtecnicos' },          // necesita programaciones, remisiones, terceros
+  { label: 'Import Requisiciones',         script: 'import-requisiciones' },        // necesita terceros, programaciones, tarifas, sedes
+  { label: 'Import Detalle Requisición',   script: 'import-detrequisicion' },       // necesita requisiciones, lotes, productos, tarifas
+  { label: 'Import Cuentas',               script: 'import-cuentas' },              // necesita bancos, terceros, sedes
+  { label: 'Import Proyectos',             script: 'import-proyectos' },            // necesita terceros
+  { label: 'Import Tipos de Pago',         script: 'import-tipospago' },            // enriquece clasificaciones_gasto sobre la marcha
+  { label: 'Import Gastos',                script: 'import-gastos' },               // necesita terceros, sedes, formas_pago, cuentas, tipos_pago, proyectos, clasificaciones_gasto, cat_iva/iva_ret/isr_ret, programaciones
+  { label: 'Import Fuentes',               script: 'import-fuentes' },              // necesita programaciones, gastos, terceros
+  { label: 'Import Documentos Programación', script: 'import-documentosprogramacion' }, // necesita programaciones
+  { label: 'Import Compras',               script: 'import-compras' },              // necesita sedes, almacenes, terceros, proyectos, formas_pago
+  { label: 'Import Movimientos de Caja',   script: 'import-movimientoscaja' },      // necesita terceros, sedes, formas_pago, cuentas, bancos, conceptos_movimientos
+  { label: 'Import MIR',                   script: 'import-mir' },                  // necesita tipos_pago, terceros, cuentas, formas_pago, proyectos
+  { label: 'Import Programación Pagos',    script: 'import-programacionpagos' },    // necesita terceros, gastos, compras, det_tecnicos, mir, movimientos_caja
+  { label: 'Import Pagos Ejecución',       script: 'import-pagosejecucion' },       // necesita terceros, programacion_pagos, formas_pago, cuentas, bancos, movimientos_caja
+  { label: 'Import Detalle Compra',        script: 'import-detallecompra' },        // necesita compras, productos, terceros, cat_iva/iva_ret/isr_ret
+  { label: 'Import Entradas por Compra',   script: 'import-entradascompra' },       // necesita detalle_compras, productos, lotes, terceros
+  { label: 'Import Abonos',                script: 'import-abonos' },               // necesita terceros, movimientos_caja, facturas, formas_pago, cuentas, bancos
 ];
 
 type Step   = typeof STEPS[number];

@@ -10,9 +10,10 @@ import { PrismaClient } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 const prisma   = new PrismaClient();
-const CSV_PATH = path.join('C:\\Users\\ASUS\\Desktop\\tspine-csv', 'SistemaTspine1.0 - Det_Consumo.csv');
+const CSV_PATH = path.join(os.homedir(), 'Desktop', 'tspine-csv', 'SistemaTspine1.0 - Det_Consumo.csv');
 
 // ── Column resolver ───────────────────────────────────────────────────────────
 

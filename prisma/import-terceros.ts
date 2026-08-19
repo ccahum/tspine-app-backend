@@ -12,11 +12,13 @@
 import { ClasificacionTercero, PrismaClient, ReglaCrud, TablaProtegida } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { parse } from 'csv-parse/sync';
 
 const prisma = new PrismaClient();
-const CSV_PATH       = path.join('C:\\Users\\ASUS\\Desktop\\tspine-csv', 'SistemaTspine1.0 - Terceros.csv');
-const CSV_PROG_PATH  = path.join('C:\\Users\\ASUS\\Desktop\\tspine-csv', 'SistemaTspine1.0 - Programacion - Programacion.csv');
+const CSV_DIR        = path.join(os.homedir(), 'Desktop', 'tspine-csv');
+const CSV_PATH       = path.join(CSV_DIR, 'SistemaTspine1.0 - Terceros.csv');
+const CSV_PROG_PATH  = path.join(CSV_DIR, 'SistemaTspine1.0 - Programacion - Programacion.csv');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
@@ -29,6 +31,9 @@ const REGLA_POR_PERFIL: Record<string, ReglaCrud> = {
   Contador:         'ALL_CHANGES',
   General:          'ADDS_AND_UPDATES',
   Comercial:        'ADDS_AND_UPDATES',
+  Comercial_P:      'ADDS_AND_UPDATES',
+  Comercial_Dir:    'ADDS_AND_UPDATES',
+  Administración_Pro: 'ADDS_AND_UPDATES',
   Comad:            'ADDS_AND_UPDATES',
   Compras:          'ADDS_AND_UPDATES',
   Calidad:          'ADDS_AND_UPDATES',
@@ -48,6 +53,9 @@ const TABLAS_POR_PERFIL: Record<string, TablaProtegida[]> = {
   Contador:         ['Gastos', 'ProgramacionPagos', 'PagosEjecucion'],
   General:          ['Cotizacion', 'Gastos'],
   Comercial:        ['Cotizacion'],
+  Comercial_P:      ['Cotizacion'],
+  Comercial_Dir:    ['Cotizacion'],
+  Administración_Pro: ['Cotizacion', 'Gastos', 'ProgramacionPagos', 'PagosEjecucion'],
   Comad:            ['Cotizacion'],
   Compras:          ['Cotizacion'],
   Vallarta:         ['Cotizacion'],
@@ -206,29 +214,16 @@ const issueLog: { type: IssueType; msg: string }[] = [];
 
 function logIssue(type: IssueType, msg: string) {
   issueLog.push({ type, msg });
-  const prefijos: Record<IssueType, string> = {
-    DUP_CSV:              '  [DUP-CSV]        ',
-    DUP_NOMBRE_CONFLICTO: '  [DUP-CONFLICTO]  ',
-    DUP_DB:               '  [DUP-DB]         ',
-    CORREO_BASURA:        '  [CORREO-BASURA]  ',
-    RFC_LIMPIADO:         '  [RFC-LIMPIADO]   ',
-    PAIS_NORM:            '  [PAIS-NORM]      ',
-    MERGE_CAMPO:          '  [MERGE]          ',
-    PERFIL_DESCONOCIDO:   '  [PERFIL-?]       ',
-    SIN_NOMBRE:           '  [SIN-NOMBRE]     ',
-    NOMBRE_LIMPIADO:      '  [NOMBRE-LIMPIADO]',
-    SEDE_NO_ENCONTRADA:   '  [SEDE-?]         ',
-    HOSP_MATCH_EXACTO:    '  [HOSP-EXACTO]    ',
-    HOSP_MATCH_MANUAL:    '  [HOSP-MANUAL]    ',
-    HOSP_MATCH_FUZZY:     '  [HOSP-FUZZY]     ',
-    HOSP_REVISAR:         '  [HOSP-REVISAR]   ',
-    HOSP_TERCERO_MINIMO:  '  [HOSP-MINIMO]    ',
-    HOSP_SIN_PROG:        '  [HOSP-SIN-PROG]  ',
-    HOSP_CSV_SIN_PROG:    '  [HOSP-CSV-SINPROG]',
-    HOSP_FUSION:          '  [HOSP-FUSION]    ',
-    ERROR:                '  [ERROR]          ',
-  };
-  console.log(`${prefijos[type]}${msg}`);
+}
+
+function sampleRandom<T>(arr: T[], n: number): T[] {
+  const copy = [...arr];
+  const result: T[] = [];
+  for (let i = 0; i < n && copy.length > 0; i++) {
+    const idx = Math.floor(Math.random() * copy.length);
+    result.push(copy.splice(idx, 1)[0]);
+  }
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1268,7 +1263,12 @@ async function main() {
   // Issues por tipo
   if (issueLog.length > 0) {
     const conteo = new Map<IssueType, number>();
-    for (const { type } of issueLog) conteo.set(type, (conteo.get(type) ?? 0) + 1);
+    const mensajesPorTipo = new Map<IssueType, string[]>();
+    for (const { type, msg } of issueLog) {
+      conteo.set(type, (conteo.get(type) ?? 0) + 1);
+      if (!mensajesPorTipo.has(type)) mensajesPorTipo.set(type, []);
+      mensajesPorTipo.get(type)!.push(msg);
+    }
 
     console.log(`\n  ⚠️  Issues detectados:`);
     const labels: Record<IssueType, string> = {
@@ -1297,6 +1297,8 @@ async function main() {
     for (const [type, count] of [...conteo.entries()].sort((a, b) => b[1] - a[1])) {
       const icono = ['HOSP_REVISAR', 'HOSP_SIN_PROG', 'ERROR'].includes(type) ? '❌' : '   ';
       console.log(`  ${icono} ${String(count).padStart(4)}x  ${labels[type]}`);
+      const muestra = sampleRandom(mensajesPorTipo.get(type)!, 5);
+      for (const m of muestra) console.log(`         · ${m}`);
     }
   }
 

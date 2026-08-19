@@ -69,10 +69,424 @@ model FormaPago {
   forma    String
   efectivo Boolean  @default(false)
   tc       Boolean?
-  tarifas     Tarifa[]
-  valConsumos ValConsumo[]
+  tarifas         Tarifa[]
+  valConsumos     ValConsumo[]
+  gastos          Gasto[]
+  compras         Compra[]
+  movimientosCaja MovimientoCaja[]
+  mirs            Mir[]
+  pagosEjecucion  PagoEjecucion[]
+  abonos          Abono[]
 
   @@map("formas_pago")
+}
+
+model Banco {
+  id     String @id
+  nombre String
+
+  cuentas         Cuenta[]
+  movimientosCaja MovimientoCaja[]
+  pagosEjecucion  PagoEjecucion[]
+  abonos          Abono[]
+
+  @@map("bancos")
+}
+
+model ClasificacionGasto {
+  id            String @id
+  clasificacion String
+
+  tiposPago TipoPago[]
+  gastos    Gasto[]
+
+  @@map("clasificaciones_gasto")
+}
+
+model ConceptoMovimiento {
+  id       String  @id
+  concepto String?
+  tipo     String?
+
+  movimientosCaja MovimientoCaja[]
+
+  @@map("conceptos_movimientos")
+}
+
+model MovimientoCaja {
+  id                  String    @id
+  usuarioId           String?   @map("usuario_id")
+  marcaTiempo         DateTime? @map("marca_tiempo")
+  empresaId           String?   @map("empresa_id")
+  sedeId              String?   @map("sede_id")
+  tipo                String?
+  contactoId          String?   @map("contacto_id")
+  numRecaudo          String?   @map("num_recaudo")
+  fecha               DateTime? @db.Date
+  formaRecaudoId      String?   @map("forma_recaudo_id")
+  cuentaId            String?   @map("cuenta_id")
+  destinoId           String?   @map("destino_id")
+  valor               Decimal?  @db.Decimal(15, 2)
+  porcentajeComision  Decimal?  @map("porcentaje_comision") @db.Decimal(5, 2)
+  funcionarioRecibeId String?   @map("funcionario_recibe_id")
+  conceptoId          String?   @map("concepto_id")
+  observaciones       String?
+  noRec               String?   @map("no_rec")
+  status              String?
+  tipoDeRecaudo       String?   @map("tipo_de_recaudo")
+  porcentaje          Decimal?  @db.Decimal(5, 2)
+  imagenSoporte       String?   @map("imagen_soporte")
+  archivoSoporte      String?   @map("archivo_soporte")
+
+  usuario           Tercero?            @relation("MovimientoCajaUsuario",     fields: [usuarioId],           references: [id])
+  empresa           Tercero?            @relation("MovimientoCajaEmpresa",     fields: [empresaId],           references: [id])
+  sede              Sede?               @relation(                            fields: [sedeId],              references: [id])
+  contacto          Tercero?            @relation("MovimientoCajaContacto",   fields: [contactoId],          references: [id])
+  formaRecaudo      FormaPago?          @relation(                            fields: [formaRecaudoId],      references: [id])
+  cuenta            Cuenta?             @relation(                            fields: [cuentaId],            references: [id])
+  destino           Banco?              @relation(                            fields: [destinoId],           references: [id])
+  funcionarioRecibe Tercero?            @relation("MovimientoCajaFuncionario", fields: [funcionarioRecibeId], references: [id])
+  concepto          ConceptoMovimiento? @relation(                            fields: [conceptoId],          references: [id])
+  programacionPagos ProgramacionPago[]
+  pagosEjecucion    PagoEjecucion[]
+  abonos            Abono[]
+
+  @@map("movimientos_caja")
+}
+
+model Mir {
+  id                 String    @id
+  marcaTiempo        DateTime? @map("marca_tiempo")
+  tipoMovimiento     String?   @map("tipo_movimiento")
+  conceptoMovimiento String?   @map("concepto_movimiento")
+  generaComision     Boolean?  @map("genera_comision")
+  tipoPagoId         String?   @map("tipo_pago_id")
+  comision           Decimal?  @db.Decimal(5, 2)
+  usuarioId          String?   @map("usuario_id")
+  numRegistro        String?   @map("num_registro")
+  fecha              DateTime? @db.Date
+  origenId           String?   @map("origen_id")
+  cuentaOrigenId     String?   @map("cuenta_origen_id")
+  formaMovimientoId  String?   @map("forma_movimiento_id")
+  destinoId          String?   @map("destino_id")
+  cuentaDestinoId    String?   @map("cuenta_destino_id")
+  valor              Decimal?  @db.Decimal(15, 2)
+  descripcion        String?
+  imagenSoporte      String?   @map("imagen_soporte")
+  archivoPdf         String?   @map("archivo_pdf")
+  proyectoId         String?   @map("proyecto_id")
+  perteneceAProyecto Boolean?  @map("pertenece_a_proyecto")
+
+  tipoPago        TipoPago?  @relation(                    fields: [tipoPagoId],        references: [id])
+  usuario         Tercero?   @relation("MirUsuario",       fields: [usuarioId],         references: [id])
+  origen          Tercero?   @relation("MirOrigen",        fields: [origenId],          references: [id])
+  cuentaOrigen    Cuenta?    @relation("MirCuentaOrigen",  fields: [cuentaOrigenId],    references: [id])
+  formaMovimiento FormaPago? @relation(                    fields: [formaMovimientoId], references: [id])
+  destino         Tercero?   @relation("MirDestino",       fields: [destinoId],         references: [id])
+  cuentaDestino   Cuenta?    @relation("MirCuentaDestino", fields: [cuentaDestinoId],   references: [id])
+  proyecto        Proyecto?  @relation(                    fields: [proyectoId],        references: [id])
+  programacionPagos ProgramacionPago[]
+
+  @@map("mir")
+}
+
+model TipoPago {
+  id             String  @id
+  clasificacionId String? @map("clasificacion_id")
+  descripcion    String?
+  frecuencia     String?
+  observaciones  String?
+
+  clasificacion ClasificacionGasto? @relation(fields: [clasificacionId], references: [id])
+  gastos        Gasto[]
+  mirs          Mir[]
+
+  @@map("tipos_pago")
+}
+
+model ProgramacionPago {
+  id                    String    @id
+  marcaTiempo           DateTime? @map("marca_tiempo")
+  fechaOrigenMovimiento DateTime? @map("fecha_origen_movimiento") @db.Date
+  fechaPago             DateTime? @map("fecha_pago")              @db.Date
+  programadoPorId       String?   @map("programado_por_id")
+  beneficiarioGastoId   String?   @map("beneficiario_gasto_id")
+  beneficiarioPagoId    String?   @map("beneficiario_pago_id")
+  folioRelacionado      String?   @map("folio_relacionado")
+  tipo                  String?
+  provieneDe            String?   @map("proviene_de")
+  folioGastoId          String?   @map("folio_gasto_id")
+  folioCompraId         String?   @map("folio_compra_id")
+  folioComisionesId     String?   @map("folio_comisiones_id")
+  folioMirId            String?   @map("folio_mir_id")
+  segmentador           String?
+  tipoDePago            String?   @map("tipo_de_pago")
+  cuentaContable        String?   @map("cuenta_contable")
+  folioCajaId           String?   @map("folio_caja_id")
+  comision              Decimal?  @db.Decimal(15, 2)
+  sede                  String?
+
+  programadoPor     Tercero?        @relation("ProgramacionPagoProgramadoPor",     fields: [programadoPorId],     references: [id])
+  beneficiarioGasto Tercero?        @relation("ProgramacionPagoBeneficiarioGasto", fields: [beneficiarioGastoId], references: [id])
+  beneficiarioPago  Tercero?        @relation("ProgramacionPagoBeneficiarioPago",  fields: [beneficiarioPagoId],  references: [id])
+  folioGasto        Gasto?          @relation(                                     fields: [folioGastoId],       references: [id])
+  folioCompra       Compra?         @relation(                                     fields: [folioCompraId],      references: [id])
+  folioComisiones   DetTecnico?     @relation(                                     fields: [folioComisionesId],  references: [id])
+  folioMir          Mir?            @relation(                                     fields: [folioMirId],         references: [id])
+  folioCaja         MovimientoCaja? @relation(                                     fields: [folioCajaId],        references: [id])
+  pagosEjecucion    PagoEjecucion[]
+
+  @@map("programacion_pagos")
+}
+
+model PagoEjecucion {
+  id                    String    @id @map("id_pago")
+  registradoPorId       String?   @map("registrado_por_id")
+  marcaTiempo           DateTime? @map("marca_tiempo")
+  programacionPagoId    String?   @map("programacion_pago_id")
+  fechaDeRegistro       DateTime? @map("fecha_de_registro")        @db.Date
+  ejecutado             Boolean?
+  fechaProgramado       DateTime? @map("fecha_programado")         @db.Date
+  fechaDeEjecucionFecha DateTime? @map("fecha_de_ejecucion_fecha") @db.Date
+  beneficiarioGastoId   String?   @map("beneficiario_gasto_id")
+  beneficiarioPagoId    String?   @map("beneficiario_pago_id")
+  saldoPorConciliar     Decimal?  @map("saldo_por_conciliar")      @db.Decimal(15, 2)
+  monto                 Decimal?  @db.Decimal(15, 2)
+  formaPagoId           String?   @map("forma_pago_id")
+  cuentaId              String?   @map("cuenta_id")
+  origenId              String?   @map("origen_id")
+  notas                 String?
+  folioRelacionado      String?   @map("folio_relacionado")
+  comprobantePago       String?   @map("comprobante_pago")
+  conciliarPagosId      String?   @map("conciliar_pagos_id")
+  archivoPago           String?   @map("archivo_pago")
+  saldo                 Decimal?  @db.Decimal(15, 2)
+  tipoDeComprobante     String?   @map("tipo_de_comprobante")
+  archivoPago2          String?   @map("archivo_pago_2")
+  imagen                String?
+  fiscal                Boolean?
+  valorBruto            Decimal?  @map("valor_bruto")              @db.Decimal(15, 2)
+  iva                   Decimal?  @db.Decimal(15, 2)
+  ivaRet                Decimal?  @map("iva_ret")                  @db.Decimal(15, 2)
+  isrRet                Decimal?  @map("isr_ret")                  @db.Decimal(15, 2)
+  ivaPorcentaje         Decimal?  @map("iva_porcentaje")           @db.Decimal(5, 2)
+  ivaRetPorcentaje      Decimal?  @map("iva_ret_porcentaje")       @db.Decimal(5, 2)
+  isrRetMonto           Decimal?  @map("isr_ret_monto")            @db.Decimal(15, 2)
+  sede                  String?
+  ejecutadoPor          String?   @map("ejecutado_por")
+  fechaDeEjecucion      DateTime? @map("fecha_de_ejecucion")
+
+  registradoPor     Tercero?          @relation("PagoEjecucionRegistradoPor",     fields: [registradoPorId],    references: [id])
+  programacionPago  ProgramacionPago? @relation(                                  fields: [programacionPagoId], references: [id])
+  beneficiarioGasto Tercero?          @relation("PagoEjecucionBeneficiarioGasto", fields: [beneficiarioGastoId], references: [id])
+  beneficiarioPago  Tercero?          @relation("PagoEjecucionBeneficiarioPago",  fields: [beneficiarioPagoId],  references: [id])
+  formaPago         FormaPago?        @relation(                                  fields: [formaPagoId],        references: [id])
+  cuenta            Cuenta?           @relation(                                  fields: [cuentaId],           references: [id])
+  origen            Banco?            @relation(                                  fields: [origenId],           references: [id])
+  conciliarPagos    MovimientoCaja?   @relation(                                  fields: [conciliarPagosId],   references: [id])
+
+  @@map("pagos_ejecucion")
+}
+
+model CatIva {
+  id          String  @id
+  valor       String
+  descripcion String?
+
+  gastos          Gasto[]
+  detallesFactura DetalleFactura[]
+  detalleCompras  DetalleCompra[]
+
+  @@map("cat_iva")
+}
+
+model CatIvaRet {
+  id          String @id
+  descripcion String
+
+  gastos          Gasto[]
+  detallesFactura DetalleFactura[]
+  detalleCompras  DetalleCompra[]
+
+  @@map("cat_iva_ret")
+}
+
+model CatIsrRet {
+  id          String @id
+  descripcion String
+
+  gastos          Gasto[]
+  detallesFactura DetalleFactura[]
+  detalleCompras  DetalleCompra[]
+
+  @@map("cat_isr_ret")
+}
+
+model Proyecto {
+  id              String    @id
+  marcaTiempo     DateTime? @map("marca_tiempo")
+  registradoPorId String?   @map("registrado_por_id")
+  proyecto        String?
+  descripcion     String?
+  fechaInicio     DateTime? @map("fecha_inicio") @db.Date
+  fechaFin        DateTime? @map("fecha_fin")    @db.Date
+  estado          String?
+
+  registradoPor Tercero? @relation(fields: [registradoPorId], references: [id])
+  gastos        Gasto[]
+  compras       Compra[]
+  mirs          Mir[]
+
+  @@map("proyectos")
+}
+
+model Cuenta {
+  id                         String    @id
+  noDeCuenta                 String?   @map("no_de_cuenta")
+  clabeInterbancaria         String?   @map("clabe_interbancaria")
+  bancoId                    String?   @map("banco_id")
+  tipoDeCuenta               String?   @map("tipo_de_cuenta")
+  tipo                       String?
+  terceroId                  String?   @map("tercero_id")
+  tc                         Boolean?
+  montoDisponible            Decimal?  @map("monto_disponible")  @db.Decimal(15, 2)
+  fechaDeCorte               DateTime? @map("fecha_de_corte")    @db.Date
+  saldoInicial               Decimal?  @map("saldo_inicial")     @db.Decimal(15, 2)
+  fechaDePago                DateTime? @map("fecha_de_pago")     @db.Date
+  transferenciaInternacional Boolean?  @map("transferencia_internacional")
+  swiftBic                   String?   @map("swift_bic")
+  bancoDestino               String?   @map("banco_destino")
+  direccion                  String?
+  pais                       String?
+  estado                     String?
+  sedeId                     String?   @map("sede_id")
+  cajaChica                  Boolean?  @map("caja_chica")
+
+  banco   Banco?   @relation(fields: [bancoId],   references: [id])
+  tercero Tercero? @relation(fields: [terceroId], references: [id])
+  sede    Sede?    @relation(fields: [sedeId],    references: [id])
+
+  gastosCuentaBancaria Gasto[] @relation("GastoCuentaBancaria")
+  gastosCuentaDestina  Gasto[] @relation("GastoCuentaDestina")
+  movimientosCaja      MovimientoCaja[]
+  mirsCuentaOrigen     Mir[]   @relation("MirCuentaOrigen")
+  mirsCuentaDestino    Mir[]   @relation("MirCuentaDestino")
+  pagosEjecucion       PagoEjecucion[]
+  abonos               Abono[]
+
+  @@map("cuentas")
+}
+
+model Gasto {
+  id                  String    @id
+  usuarioId           String?   @map("usuario_id")
+  marcaTiempo         DateTime? @map("marca_tiempo")
+  numGasto            String?   @map("num_gasto")
+  beneficiarioGastoId String?   @map("beneficiario_gasto_id")
+  empresaId           String?   @map("empresa_id")
+  sedeId              String?   @map("sede_id")
+  fechaGasto          DateTime? @map("fecha_gasto") @db.Date
+  formaPagoId         String?   @map("forma_pago_id")
+  cuentaBancariaId    String?   @map("cuenta_bancaria_id")
+  beneficiarioPagoId  String?   @map("beneficiario_pago_id")
+  cuentaDestinaId     String?   @map("cuenta_destina_id")
+  tipoGastoId         String?   @map("tipo_gasto_id")
+  numDocumento        String?   @map("num_documento")
+  descripcion         String?
+  valor               Decimal?  @db.Decimal(15, 2)
+  imagenSoporte       String?   @map("imagen_soporte")
+  archivoSoporte      String?   @map("archivo_soporte")
+  eliminar            Boolean   @default(false)
+  ejecutar            Boolean?
+  proyectoId          String?   @map("proyecto_id")
+  clasificacionId     String?   @map("clasificacion_id")
+  ivaId               String?   @map("iva_id")
+  ivaRetId            String?   @map("iva_ret_id")
+  isrRetId            String?   @map("isr_ret_id")
+  tipoPersona         String?   @map("tipo_persona")
+  ivaManual           Decimal?  @map("iva_manual") @db.Decimal(15, 2)
+  fuenteId            String?   @map("fuente_id")
+  requiereFuente      Boolean?  @map("requiere_fuente")
+  ish                 Boolean?
+  porcentaje          Decimal?  @db.Decimal(7, 2)
+  isrForma            String?   @map("isr_forma")
+  isrValor            Decimal?  @map("isr_valor")     @db.Decimal(15, 2)
+  valorSinIva         Decimal?  @map("valor_sin_iva")  @db.Decimal(15, 2)
+
+  usuario           Tercero?            @relation("GastoUsuario",           fields: [usuarioId],           references: [id])
+  beneficiarioGasto Tercero?            @relation("GastoBeneficiarioGasto", fields: [beneficiarioGastoId], references: [id])
+  empresa           Tercero?            @relation("GastoEmpresa",           fields: [empresaId],           references: [id])
+  beneficiarioPago  Tercero?            @relation("GastoBeneficiarioPago",  fields: [beneficiarioPagoId],  references: [id])
+  sede              Sede?               @relation(fields: [sedeId],          references: [id])
+  formaPago         FormaPago?          @relation(fields: [formaPagoId],     references: [id])
+  cuentaBancaria    Cuenta?             @relation("GastoCuentaBancaria",    fields: [cuentaBancariaId],    references: [id])
+  cuentaDestina     Cuenta?             @relation("GastoCuentaDestina",     fields: [cuentaDestinaId],     references: [id])
+  tipoGasto         TipoPago?           @relation(fields: [tipoGastoId],     references: [id])
+  proyecto          Proyecto?           @relation(fields: [proyectoId],      references: [id])
+  clasificacion     ClasificacionGasto? @relation(fields: [clasificacionId], references: [id])
+  iva               CatIva?             @relation(fields: [ivaId],           references: [id])
+  ivaRet            CatIvaRet?          @relation(fields: [ivaRetId],        references: [id])
+  isrRet            CatIsrRet?          @relation(fields: [isrRetId],        references: [id])
+  fuente            Programacion?       @relation(fields: [fuenteId],        references: [id])
+  fuentes           Fuente[]
+  programacionPagos ProgramacionPago[]
+
+  @@map("gastos")
+}
+
+model Fuente {
+  id              String    @id
+  marcaTiempo     DateTime? @map("marca_tiempo")
+  programacionId  String?   @map("programacion_id")
+  gastoId         String?   @map("gasto_id")
+  monto           Decimal?  @db.Decimal(15, 2)
+  registradoPorId String?   @map("registrado_por_id")
+
+  programacion  Programacion? @relation(fields: [programacionId], references: [id])
+  gasto         Gasto?        @relation(fields: [gastoId],         references: [id])
+  registradoPor Tercero?      @relation(fields: [registradoPorId], references: [id])
+
+  @@map("fuentes")
+}
+
+model DocumentoProgramacion {
+  id             String    @id
+  programacionId String?   @map("programacion_id")
+  nombre         String?
+  documento      String?
+  cargadoEl      DateTime? @map("cargado_el")
+  cargadoPorId   String?   @map("cargado_por_id")
+
+  programacion Programacion? @relation(fields: [programacionId], references: [id])
+  cargadoPor   Tercero?      @relation(fields: [cargadoPorId],   references: [id])
+
+  @@map("documentos_programacion")
+}
+
+model DetalleFactura {
+  id               String   @id
+  facturacionId    String?  @map("facturacion_id")
+  productoId       String?  @map("producto_id")
+  descripcion      String?
+  cantidad         Decimal? @db.Decimal(10, 2)
+  precioUnitario   Decimal? @map("precio_unitario") @db.Decimal(15, 2)
+  descuento        Decimal? @db.Decimal(15, 2)
+  codigoSat        String?  @map("codigo_sat")
+  unidadMedidaId   String?  @map("unidad_medida_id")
+  ivaId            String?  @map("iva_id")
+  ivaRetId         String?  @map("iva_ret_id")
+  isrId            String?  @map("isr_id")
+  objetoImpuestoId String?  @map("objeto_impuesto_id")
+
+  facturacion    Factura?         @relation(fields: [facturacionId],    references: [id])
+  producto       Producto?        @relation(fields: [productoId],       references: [id])
+  unidadMedida   UnidadMedidaSat? @relation(fields: [unidadMedidaId],   references: [id])
+  iva            CatIva?          @relation(fields: [ivaId],            references: [id])
+  ivaRet         CatIvaRet?       @relation(fields: [ivaRetId],         references: [id])
+  isr            CatIsrRet?       @relation(fields: [isrId],            references: [id])
+  objetoImpuesto ObjetoImpuesto?  @relation(fields: [objetoImpuestoId], references: [id])
+
+  @@map("detalles_factura")
 }
 
 model Tarifa {
@@ -95,6 +509,12 @@ model Tarifa {
   terceros              Tercero[]
   remisionesTarifa      Remision[] @relation("RemisionTarifa")
   remisionesCubrimiento Remision[] @relation("RemisionCubrimiento")
+  requisicionesCubrimiento Requisicion[] @relation("RequisicionCubrimiento")
+  requisicionesTarifa      Requisicion[] @relation("RequisicionTarifa")
+  detRequisicionesTarifaAsociada DetRequisicion[] @relation("DetRequisicionTarifaAsociada")
+  listasPrecio ListaPrecio[]
+  cotizacionesCubrimiento Cotizacion[] @relation("CotizacionCubrimiento")
+  cotizacionesTarifa      Cotizacion[] @relation("CotizacionTarifa")
 
   @@map("subtarifas")
 }
@@ -115,6 +535,12 @@ model Sede {
   valConsumosSedeUsuario   ValConsumo[]             @relation("ValConsumoSedeUsuario")
   almacenes                Almacen[]
   valConsumoLotes          ValConsumoLote[]
+  requisiciones            Requisicion[]
+  cuentas                  Cuenta[]
+  gastos                   Gasto[]
+  compras                  Compra[]
+  movimientosCaja          MovimientoCaja[]
+  cotizaciones             Cotizacion[]
 
   @@map("sedes")
 }
@@ -215,6 +641,44 @@ model Tercero {
   remTecnicosTecnico           RemTecnico[]             @relation("RemTecnicoTecnico")
   remTecnicosRegistradoPor     RemTecnico[]             @relation("RemTecnicoRegistradoPor")
   remTecnicosEditadoPor        RemTecnico[]             @relation("RemTecnicoEditadoPor")
+  requisicionesUsuario         Requisicion[]            @relation("RequisicionUsuario")
+  requisicionesContacto        Requisicion[]            @relation("RequisicionContacto")
+  cuentas                      Cuenta[]
+  proyectosRegistradoPor       Proyecto[]
+  gastosUsuario                Gasto[]                  @relation("GastoUsuario")
+  gastosBeneficiarioGasto      Gasto[]                  @relation("GastoBeneficiarioGasto")
+  gastosEmpresa                Gasto[]                  @relation("GastoEmpresa")
+  gastosBeneficiarioPago       Gasto[]                  @relation("GastoBeneficiarioPago")
+  comprasProveedor             Compra[]                 @relation("CompraProveedor")
+  comprasRegistradoPor         Compra[]                 @relation("CompraRegistradoPor")
+  movimientosCajaUsuario       MovimientoCaja[]         @relation("MovimientoCajaUsuario")
+  movimientosCajaEmpresa       MovimientoCaja[]         @relation("MovimientoCajaEmpresa")
+  movimientosCajaContacto      MovimientoCaja[]         @relation("MovimientoCajaContacto")
+  movimientosCajaFuncionario   MovimientoCaja[]         @relation("MovimientoCajaFuncionario")
+  mirsUsuario                  Mir[]                    @relation("MirUsuario")
+  mirsOrigen                   Mir[]                    @relation("MirOrigen")
+  mirsDestino                  Mir[]                    @relation("MirDestino")
+  programacionPagosProgramadoPor     ProgramacionPago[]  @relation("ProgramacionPagoProgramadoPor")
+  programacionPagosBeneficiarioGasto ProgramacionPago[]  @relation("ProgramacionPagoBeneficiarioGasto")
+  programacionPagosBeneficiarioPago  ProgramacionPago[]  @relation("ProgramacionPagoBeneficiarioPago")
+  pagosEjecucionRegistradoPor        PagoEjecucion[]     @relation("PagoEjecucionRegistradoPor")
+  pagosEjecucionBeneficiarioGasto    PagoEjecucion[]     @relation("PagoEjecucionBeneficiarioGasto")
+  pagosEjecucionBeneficiarioPago     PagoEjecucion[]     @relation("PagoEjecucionBeneficiarioPago")
+  detalleComprasEnviadorPor          DetalleCompra[]
+  entradasCompraValidadoPor          EntradaCompra[]
+  fuentesRegistradoPor         Fuente[]
+  documentosCargadoPor         DocumentoProgramacion[]
+  abonosUsuario                Abono[]                 @relation("AbonoUsuario")
+  abonosTercero                Abono[]                 @relation("AbonoTercero")
+  tecnicosSugeridosTecnico      TecnicoSugerido[]       @relation("TecnicoSugeridoTecnico")
+  tecnicosSugeridosRegistradoPor TecnicoSugerido[]      @relation("TecnicoSugeridoRegistradoPor")
+  programacionesCreadoPor      Programacion[]           @relation("ProgramacionCreadoPor")
+  preciosEspeciales            PrecioEspecial[]
+  cotizacionesUsuario              Cotizacion[]         @relation("CotizacionUsuario")
+  cotizacionesHospital             Cotizacion[]         @relation("CotizacionHospital")
+  cotizacionesResponsableEconomico Cotizacion[]         @relation("CotizacionResponsable")
+  cotizacionesEmpresa              Cotizacion[]         @relation("CotizacionEmpresa")
+  detCotizaHospital                DetCotiza[]          @relation("DetCotizaHospital")
   cargo                    Cargo?                   @relation(fields: [cargoId], references: [id])
   ciudad                   Ciudad?                  @relation(fields: [ciudadId], references: [id])
   estado                   Estado?                  @relation(fields: [estadoId], references: [id])
@@ -244,6 +708,9 @@ model DatosFiscales {
   codigoPostalFiscal String?        @map("codigo_postal_fiscal")
   usoCfdiId          String?        @map("uso_cfdi_id")
   direccionFiscal    String?        @map("direccion_fiscal")
+  celular            String?
+  oficina            String?
+  correo             String?
   regimenFiscal      RegimenFiscal? @relation(fields: [regimenFiscalId], references: [id])
   tercero            Tercero        @relation(fields: [terceroId], references: [id], onDelete: Cascade)
   usoCfdi            UsoCfdi?       @relation(fields: [usoCfdiId], references: [id])
@@ -315,10 +782,30 @@ model Programacion {
   valConsumos         ValConsumo[]
   detTecnicoDetalles  DetTecnicoDetalle[]
   remTecnicos         RemTecnico[]
+  requisiciones       Requisicion[]
+  gastos              Gasto[]
+  fuentes             Fuente[]
+  documentos          DocumentoProgramacion[]
+  tecnicosSugeridos   TecnicoSugerido[]
   hospital            Hospital?             @relation(fields: [hospitalId], references: [id])
   sede                Sede?                 @relation(fields: [sedeId], references: [id])
+  creadoPorTercero    Tercero?              @relation("ProgramacionCreadoPor", fields: [creadoPor], references: [id])
 
   @@map("programaciones")
+}
+
+model TecnicoSugerido {
+  id              String    @id @default(uuid())
+  programacionId  String    @map("programacion_id")
+  tecnicoId       String    @map("tecnico_id")
+  fechaRegistro   DateTime  @default(now()) @map("fecha_registro")
+  registradoPorId String?   @map("registrado_por_id")
+
+  programacion  Programacion @relation(fields: [programacionId], references: [id])
+  tecnico       Tercero      @relation("TecnicoSugeridoTecnico",        fields: [tecnicoId],       references: [id])
+  registradoPor Tercero?     @relation("TecnicoSugeridoRegistradoPor",  fields: [registradoPorId], references: [id])
+
+  @@map("tecnicos_sugeridos")
 }
 
 model ProgramacionMedico {
@@ -428,6 +915,8 @@ model Lote {
   fechaAlerta    DateTime? @map("fecha_alerta")    @db.Date
 
   valConsumoLotes ValConsumoLote[]
+  entradasCompra  EntradaCompra[]
+  detRequisiciones DetRequisicion[]
 
   @@map("lotes")
 }
@@ -436,6 +925,7 @@ model ObjetoImpuesto {
   id          String     @id
   descripcion String?
   productos   Producto[]
+  detallesFactura DetalleFactura[]
 
   @@map("objetos_impuesto")
 }
@@ -444,6 +934,7 @@ model UnidadMedidaSat {
   id        String     @id @map("id_udem")
   udem      String?
   productos Producto[]
+  detallesFactura DetalleFactura[]
 
   @@map("unidades_medida_sat")
 }
@@ -534,6 +1025,14 @@ model Producto {
   detConsumos        DetConsumo[]
   valConsumos        ValConsumo[]
   detTecnicoDetalles DetTecnicoDetalle[]
+  detallesFactura    DetalleFactura[]
+  detalleCompras     DetalleCompra[]
+  entradasCompra     EntradaCompra[]
+  detRequisiciones   DetRequisicion[]
+  listasPrecio       ListaPrecio[]
+  preciosEspeciales  PrecioEspecial[]
+  detallePaquetes    DetallePaquete[]
+  detCotiza          DetCotiza[]
 
   @@map("productos")
 }
@@ -563,6 +1062,8 @@ model Factura {
   remision    Remision? @relation(                      fields: [remisionId],    references: [id])
   sede        Sede?     @relation(                      fields: [sedeId],        references: [id])
   notasCredito NotaCredito[]
+  detallesFactura DetalleFactura[]
+  abonos Abono[]
 
   @@map("facturas")
 }
@@ -607,6 +1108,7 @@ model DetTecnico {
   tecnico      Tercero?      @relation("DetTecnicoTecnico",   fields: [tecnicoId],      references: [id])
   remision     Remision?     @relation(                       fields: [remisionId],     references: [id])
   detalles     DetTecnicoDetalle[]
+  programacionPagos ProgramacionPago[]
 
   @@map("det_tecnicos")
 }
@@ -680,10 +1182,137 @@ model Almacen {
   sedeId  String? @map("sede_id")
   tipo    String?
 
-  sede  Sede? @relation(fields: [sedeId], references: [id])
-  lotes ValConsumoLote[]
+  sede    Sede? @relation(fields: [sedeId], references: [id])
+  lotes   ValConsumoLote[]
+  compras Compra[]
 
   @@map("almacenes")
+}
+
+model Compra {
+  id                  String    @id
+  marcaTiempo         DateTime? @map("marca_tiempo")
+  ordenAValidar       String?   @map("orden_a_validar")
+  folio               String?
+  fecha               DateTime? @db.Date
+  almacenDestinoId    String?   @map("almacen_destino_id")
+  ubicacionDestinoId  String?   @map("ubicacion_destino_id")
+  forma               String?
+  proveedorId         String?   @map("proveedor_id")
+  fechaVencimiento    DateTime? @map("fecha_vencimiento") @db.Date
+  registradoPorId     String?   @map("registrado_por_id")
+  estado              String?
+  contador            Int?
+  status              String?
+  tipoCompra          Boolean?  @map("tipo_compra")
+  proyectoId          String?   @map("proyecto_id")
+  formaPagoId         String?   @map("forma_pago_id")
+  solicitudCotizacion String?   @map("solicitud_cotizacion")
+  tipoPersona         String?   @map("tipo_persona")
+  contadorCompras     Int?      @map("contador_compras")
+  pdf                 String?
+  condicionesPago     String?   @map("condiciones_pago")
+  usoCfdi             String?   @map("uso_cfdi")
+
+  almacenDestino   Sede?      @relation(                       fields: [almacenDestinoId],   references: [id])
+  ubicacionDestino Almacen?   @relation(                       fields: [ubicacionDestinoId], references: [id])
+  proveedor        Tercero?   @relation("CompraProveedor",     fields: [proveedorId],         references: [id])
+  registradoPor    Tercero?   @relation("CompraRegistradoPor", fields: [registradoPorId],     references: [id])
+  proyecto         Proyecto?  @relation(                       fields: [proyectoId],         references: [id])
+  formaPago        FormaPago? @relation(                       fields: [formaPagoId],        references: [id])
+  programacionPagos ProgramacionPago[]
+  detalleCompras    DetalleCompra[]
+
+  @@map("compras")
+}
+
+model DetalleCompra {
+  id                  String    @id @map("id_detalle_compra")
+  compraId            String?   @map("compra_id")
+  productoId          String?   @map("producto_id")
+  costo               Decimal?  @db.Decimal(15, 2)
+  cantidad            Decimal?  @db.Decimal(10, 2)
+  costoActual         Decimal?  @map("costo_actual")          @db.Decimal(15, 2)
+  actualizarCosto     String?   @map("actualizar_costo")
+  enviadoEl           DateTime? @map("enviado_el")
+  enviadorPorId       String?   @map("enviador_por_id")
+  actualizarSoloCosto Boolean?  @map("actualizar_solo_costo")
+  notas               String?
+  ivaId               String?   @map("iva_id")
+  ivaRetId            String?   @map("iva_ret_id")
+  isrRetId            String?   @map("isr_ret_id")
+
+  compra      Compra?    @relation(fields: [compraId],     references: [id])
+  producto    Producto?  @relation(fields: [productoId],   references: [id])
+  enviadorPor Tercero?   @relation(fields: [enviadorPorId], references: [id])
+  iva         CatIva?    @relation(fields: [ivaId],         references: [id])
+  ivaRet      CatIvaRet? @relation(fields: [ivaRetId],      references: [id])
+  isrRet      CatIsrRet? @relation(fields: [isrRetId],      references: [id])
+  entradasCompra EntradaCompra[]
+
+  @@map("detalle_compras")
+}
+
+model EntradaCompra {
+  id               String    @id @map("id_val_lote_compra")
+  detalleCompraId  String?   @map("detalle_compra_id")
+  productoId       String?   @map("producto_id")
+  costo            Decimal?  @db.Decimal(15, 2)
+  cantidad         Decimal?  @db.Decimal(10, 2)
+  loteId           String?   @map("lote_id")
+  contador         Int?
+  almacenPz        Int?      @map("almacen_pz")
+  contendedorPz    Int?      @map("contendedor_pz")
+  h0               Decimal?  @db.Decimal(10, 2)
+  h1               Decimal?  @db.Decimal(10, 2)
+  empBM            String?   @map("emp_bm")
+  temp             String?
+  desviacion       String?
+  ac               String?
+  estado           String?
+  validadoPorId    String?   @map("validado_por_id")
+  horaDeValidacion DateTime? @map("hora_de_validacion")
+  notas            String?
+
+  detalleCompra DetalleCompra? @relation(fields: [detalleCompraId], references: [id])
+  producto      Producto?      @relation(fields: [productoId],      references: [id])
+  lote          Lote?          @relation(fields: [loteId],          references: [id])
+  validadoPor   Tercero?       @relation(fields: [validadoPorId],   references: [id])
+
+  @@map("entradas_por_compra")
+}
+
+model Abono {
+  id                     String    @id @map("id_abono")
+  usuarioId              String?   @map("usuario_id")
+  marcaTiempo            DateTime? @map("marca_tiempo")
+  recaudoId              String?   @map("recaudo_id")
+  saldoActual            Decimal?  @map("saldo_actual")             @db.Decimal(15, 2)
+  terceroId              String?   @map("tercero_id")
+  facturaId              String?   @map("factura_id")
+  fecha                  DateTime? @db.Date
+  valor                  Decimal?  @db.Decimal(15, 2)
+  formaPagoId            String?   @map("forma_pago_id")
+  cuentaId               String?   @map("cuenta_id")
+  bancoCajaId            String?   @map("banco_caja_id")
+  observaciones          String?
+  saldo                  Decimal?  @db.Decimal(15, 2)
+  noFactura              String?   @map("no_factura")
+  complemento            String?
+  xml                    String?
+  estadoComplemento      String?   @map("estado_complemento")
+  previousBalanceAmount  Decimal?  @map("previous_balance_amount")  @db.Decimal(15, 2)
+  remainingBalanceAmount Decimal?  @map("remaining_balance_amount") @db.Decimal(15, 2)
+
+  usuario   Tercero?        @relation("AbonoUsuario", fields: [usuarioId],   references: [id])
+  recaudo   MovimientoCaja? @relation(                fields: [recaudoId],   references: [id])
+  tercero   Tercero?        @relation("AbonoTercero",  fields: [terceroId],   references: [id])
+  factura   Factura?        @relation(                fields: [facturaId],   references: [id])
+  formaPago FormaPago?      @relation(                 fields: [formaPagoId], references: [id])
+  cuenta    Cuenta?         @relation(                 fields: [cuentaId],    references: [id])
+  bancoCaja Banco?          @relation(                 fields: [bancoCajaId], references: [id])
+
+  @@map("abonos")
 }
 
 model ValConsumoLote {
@@ -722,6 +1351,175 @@ model RemTecnico {
   editadoPor    Tercero?      @relation("RemTecnicoEditadoPor",     fields: [editadoPorId],    references: [id])
 
   @@map("rem_tecnicos")
+}
+
+model Requisicion {
+  id                     String    @id @map("id_movimiento")
+  marcaDeTiempo          DateTime? @map("marca_de_tiempo")
+  usuarioId              String?   @map("usuario_id")
+  fecha                  DateTime? @db.Date
+  status                 String?
+  idRelacionado          String?   @map("id_relacionado")
+  provieneDeProgramacion Boolean?  @map("proviene_de_programacion")
+  programacionId         String?   @map("programacion_id")
+  folio                  String?
+  validacion             String?
+  existeProgramacion     Boolean?  @map("existe_programacion")
+  cubrimientoId          String?   @map("cubrimiento_id")
+  tarifaId               String?   @map("tarifa_id")
+  contactoId             String?   @map("contacto_id")
+  sedeOrigenId           String?   @map("sede_origen_id")
+
+  usuario      Tercero?      @relation("RequisicionUsuario",    fields: [usuarioId],      references: [id])
+  contacto     Tercero?      @relation("RequisicionContacto",   fields: [contactoId],     references: [id])
+  programacion Programacion? @relation(                          fields: [programacionId], references: [id])
+  cubrimiento  Tarifa?       @relation("RequisicionCubrimiento", fields: [cubrimientoId],  references: [id])
+  tarifa       Tarifa?       @relation("RequisicionTarifa",      fields: [tarifaId],       references: [id])
+  sedeOrigen   Sede?         @relation(                           fields: [sedeOrigenId],   references: [id])
+  detalles     DetRequisicion[]
+
+  @@map("requisiciones")
+}
+
+model DetRequisicion {
+  id               String    @id @map("id_detalle")
+  requisicionId    String?   @map("movimiento_id")
+  loteId           String?   @map("lote_id")
+  productoId       String?   @map("producto_id")
+  cantidad         Decimal?  @db.Decimal(10, 2)
+  precio           Decimal?  @db.Decimal(15, 2)
+  tarifaAsociadaId String?   @map("tarifa_asociada_id")
+
+  requisicion    Requisicion? @relation(fields: [requisicionId],    references: [id], onDelete: Cascade)
+  lote           Lote?        @relation(fields: [loteId],           references: [id])
+  producto       Producto?    @relation(fields: [productoId],       references: [id])
+  tarifaAsociada Tarifa?      @relation("DetRequisicionTarifaAsociada", fields: [tarifaAsociadaId], references: [id])
+
+  @@map("det_requisiciones")
+}
+
+model PaqueteCotizacion {
+  id          String  @id @map("id_paquete")
+  nombre      String? @map("nombre_paquete")
+  descripcion String?
+  estado      String?
+
+  detalles     DetallePaquete[]
+  cotizaciones Cotizacion[]
+
+  @@map("paquetes_cotizaciones")
+}
+
+model ListaPrecio {
+  id                 String   @id @map("id_lista_precio")
+  subtarifaId        String?  @map("subtarifa_id")
+  productoId         String?  @map("producto_id")
+  costoUtilidad      Decimal? @map("costo_utilidad")      @db.Decimal(15, 2)
+  porcentajeGanancia Decimal? @map("porcentaje_ganancia") @db.Decimal(7, 2)
+  precio             Decimal? @db.Decimal(15, 2)
+  formaActualizacion String?  @map("forma_actualizacion")
+
+  subtarifa Tarifa?   @relation(fields: [subtarifaId], references: [id])
+  producto  Producto? @relation(fields: [productoId],  references: [id])
+
+  @@map("listas_precio")
+}
+
+model PrecioEspecial {
+  id         String   @id
+  productoId String?  @map("producto_id")
+  contactoId String?  @map("contacto_id")
+  precio     Decimal? @db.Decimal(15, 2)
+  notas      String?
+
+  producto Producto? @relation(fields: [productoId], references: [id])
+  contacto Tercero?  @relation(fields: [contactoId],  references: [id])
+
+  @@map("precios_especiales")
+}
+
+model DetallePaquete {
+  id         String @id @map("id_detalle_paquete")
+  paqueteId  String? @map("paquete_id")
+  productoId String? @map("producto_id")
+  nivel1     Int?   @map("nivel_1")
+  nivel2     Int?   @map("nivel_2")
+  nivel3     Int?   @map("nivel_3")
+  nivel4     Int?   @map("nivel_4")
+  nivel5     Int?   @map("nivel_5")
+  nivel6     Int?   @map("nivel_6")
+
+  paquete  PaqueteCotizacion? @relation(fields: [paqueteId],  references: [id])
+  producto Producto?          @relation(fields: [productoId], references: [id])
+  cotizaciones Cotizacion[]
+
+  @@map("detalle_paquetes")
+}
+
+model Cotizacion {
+  id                     String    @id
+  usuarioId              String?   @map("usuario_id")
+  marcaDeTiempo          DateTime? @map("marca_de_tiempo")
+  numCotizacion          String?   @map("num_cotizacion")
+  fecha                  DateTime? @db.Date
+  dirigidoA              String?   @map("dirigido_a")
+  medico                 String?
+  hospitalId             String?   @map("hospital_id")
+  cirugia                String?
+  cubrimientoId          String?   @map("cubrimiento_id")
+  responsableEconomicoId String?   @map("responsable_economico_id")
+  numProveedor           String?   @map("num_proveedor")
+  tarifaId               String?   @map("tarifa_id")
+  tiempoEntrega          String?   @map("tiempo_entrega")
+  observaciones          String?
+  tieneDcto              Boolean   @default(false) @map("tiene_dcto")
+  porcentajeDcto         Decimal?  @map("porcentaje_dcto") @db.Decimal(5, 2)
+  vrDcto                 Decimal?  @map("vr_dcto")         @db.Decimal(15, 2)
+  vrDctoPesos            Decimal?  @map("vr_dcto_pesos")   @db.Decimal(15, 2)
+  impuestos              String?
+  nota                   String?
+  imagen                 String?
+  empresaId              String?   @map("empresa_id")
+  status                 String?
+  sedeId                 String?   @map("sede_id")
+  paqueteId              String?   @map("paquete_id")
+  productosPaqueteId     String?   @map("productos_paquete_id")
+  contadorPaquetes       Int?      @map("contador_paquetes")
+  nivel                  String?
+
+  usuario              Tercero?           @relation("CotizacionUsuario",     fields: [usuarioId],              references: [id])
+  hospital             Tercero?           @relation("CotizacionHospital",    fields: [hospitalId],             references: [id])
+  cubrimiento          Tarifa?            @relation("CotizacionCubrimiento", fields: [cubrimientoId],          references: [id])
+  responsableEconomico Tercero?           @relation("CotizacionResponsable", fields: [responsableEconomicoId], references: [id])
+  tarifa               Tarifa?            @relation("CotizacionTarifa",      fields: [tarifaId],               references: [id])
+  empresa              Tercero?           @relation("CotizacionEmpresa",     fields: [empresaId],              references: [id])
+  sede                 Sede?              @relation(fields: [sedeId],             references: [id])
+  paquete              PaqueteCotizacion? @relation(fields: [paqueteId],          references: [id])
+  productosPaquete     DetallePaquete?    @relation(fields: [productosPaqueteId], references: [id])
+  detalles             DetCotiza[]
+
+  @@map("cotizaciones")
+}
+
+model DetCotiza {
+  id            String    @id @map("id_detalle")
+  cotizacionId  String?   @map("cotizacion_id")
+  marcaDeTiempo DateTime? @map("marca_de_tiempo")
+  hospitalId    String?   @map("hospital_id")
+  referencia    String?
+  productoId    String?   @map("producto_id")
+  cantidad      Decimal?  @db.Decimal(10, 2)
+  valorUnitario Decimal?  @map("valor_unitario") @db.Decimal(15, 2)
+  valor         Decimal?  @db.Decimal(15, 2)
+  observaciones String?
+  sede          String?
+  usuario       String?
+
+  cotizacion Cotizacion? @relation(fields: [cotizacionId], references: [id])
+  hospital   Tercero?    @relation("DetCotizaHospital", fields: [hospitalId], references: [id])
+  producto   Producto?   @relation(fields: [productoId], references: [id])
+
+  @@map("det_cotiza")
 }
 
 enum ReglaCrud {

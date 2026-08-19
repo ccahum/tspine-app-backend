@@ -123,6 +123,135 @@ const USOS_CFDI: { id: string; descripcion: string; aplicaPersonaFisica: boolean
   { id: 'CN01', descripcion: 'Nómina',                                                                                               aplicaPersonaFisica: true,  aplicaPersonaMoral: true  },
 ];
 
+const BANCOS: { id: string; nombre: string }[] = [
+  'Actinver', 'Afirme', 'American Express', 'ASSOCIATED BANK, NA', 'Azteca', 'Banbajio',
+  'Banco Bilbao Vizcaya Argentaria', 'Banco Contador', 'Banco de Sabadell SA', 'Banco del Bajio',
+  'banco mercantil del norte', 'Banco Nacional De México', 'Banco YucaMark / Cabcari', 'Bancolombia',
+  'BANK OF AMERICA, NA', 'Banorte', 'Banregio', 'BBVA', 'Bx+', 'Byline Bank',
+  'Caja Chica (Cancún)', 'Caja Chica (GDL)', 'Caja Chica (Mérida)',
+  'Caja Fuerte (Cancún)', 'Caja Fuerte (GDL)', 'Caja Fuerte (Mérida)', 'Caja Fuerte (Vallarta)',
+  'Carla', 'Citibanamex', 'Clara', 'Fifth Third Bank, NA', 'HSBC', 'Inbursa', 'Invex',
+  'JPMORGAN CHASE BANK, NA', 'KEYBANK NATIONAL ASSOCIATION', 'Lakeside Bank', 'Mifel',
+  'Multiva banco', 'Nu mexico', 'OCBC Wing Hang Bank', 'PNC BANK, NATIONAL ASSOCIATION',
+  'Santander', 'Scotiabank', 'Seacoast National Bank', 'STP', 'N/A', 'Compensación',
+  'Mechanics Bank', 'BanCoppel', 'Zhixing Company Bank', 'Mercado Pago W',
+  'Taichung Commercial Bank', 'Bankaool', 'Bancfirst', 'Transfer', 'IDFC First Bank',
+].map(nombre => ({ id: nombre, nombre }));
+
+const CLASIFICACIONES_GASTO: { id: string; clasificacion: string }[] = [
+  { id: 'Activo Fijo',      clasificacion: 'Activo Fijo' },
+  { id: 'Administración',   clasificacion: 'Administración' },
+  { id: 'Comercial',        clasificacion: 'Comercial' },
+  { id: 'Costo de Ventas',  clasificacion: 'Costo de Ventas' },
+  { id: 'Financieros',      clasificacion: 'Financieros' },
+  { id: 'Operación',        clasificacion: 'Operación' },
+  { id: 'Socios',           clasificacion: 'Socios' },
+  { id: 'Prueba',           clasificacion: 'Prueba' },
+  { id: 'SaldoInicial',     clasificacion: 'SaldoInical' },
+];
+
+const CONCEPTOS: { id: string; concepto: string | null; tipo: string | null }[] = [
+  { id: 'Recaudos',                       concepto: 'Recaudos',                       tipo: 'MC' },
+  { id: 'Pagos Adelantados (Clientes)',    concepto: 'Pagos Adelantados (Clientes)',   tipo: 'MC' },
+  { id: 'Pagos Anticipados (Proveedor)',   concepto: 'Pagos Anticipados (Proveedor)',  tipo: 'MC' },
+  { id: 'Prestamos a Empleados',           concepto: 'Prestamos a Empleados',          tipo: 'Gastos' },
+  { id: 'Pago Prestamos',                  concepto: 'Pago Prestamos',                 tipo: 'MC' },
+  { id: 'Saldo Inicial',                   concepto: 'Saldo Inicial',                  tipo: 'MC' },
+  { id: '50d42d88',                        concepto: 'Devolución',                     tipo: 'Devolución.' },
+  { id: 'Recibos Provisionales',           concepto: 'Viáticos',                       tipo: 'Egreso' },
+  { id: 'Cuadre de caja',                  concepto: null,                             tipo: null },
+  { id: 'Devolución',                      concepto: 'Devolución',                     tipo: 'Devolución' },
+  { id: '2cefdb18',                        concepto: 'Devolución',                     tipo: 'Devolución' },
+  { id: 'Dividendos',                      concepto: 'Dividendos',                     tipo: 'Dividendos' },
+  { id: 'Préstamos Bancarios',             concepto: 'Préstamos Bancarios',            tipo: 'Préstamos Bancarios' },
+];
+
+const CAT_IVA: { id: string; valor: string; descripcion: string | null }[] = [
+  { id: '0',    valor: '0%',  descripcion: 'Productos y servicios exentos de IVA' },
+  { id: '0.16', valor: '16%', descripcion: 'Tasa general aplicable en México' },
+  { id: '0.08', valor: '8%',  descripcion: 'Tasa aplicable en la región fronteriza (beneficio fiscal)' },
+  { id: '16',   valor: '16%', descripcion: null },
+];
+
+const CAT_IVA_RET: { id: string; descripcion: string }[] = [
+  { id: '0.16',     descripcion: 'IVA Ret 16%' },
+  { id: '0.106668', descripcion: 'IVA Ret 10.6668%' },
+  { id: '0.106667', descripcion: 'IVA Ret 10.6667%' },
+  { id: '0.106666', descripcion: 'IVA Ret 10.6666%' },
+  { id: '0.10666',  descripcion: 'IVA Ret 10.666%' },
+  { id: '0.10667',  descripcion: 'IVA Ret 10.667%' },
+  { id: '0.1067',   descripcion: 'IVA Ret 10.67%' },
+  { id: '0.1066',   descripcion: 'IVA Ret 10.66%' },
+  { id: '0.106',    descripcion: 'IVA Ret 10.6%' },
+  { id: '0.1',      descripcion: 'IVA Ret 10%' },
+  { id: '0.0919',   descripcion: 'IVA Ret 9.19%' },
+  { id: '0.08',     descripcion: 'IVA Ret 8%' },
+  { id: '0.06',     descripcion: 'IVA Ret 6%' },
+  { id: '0.054',    descripcion: 'IVA Ret 5.4%' },
+  { id: '0.053333', descripcion: 'IVA Ret 5.3333%' },
+  { id: '0.05',     descripcion: 'IVA Ret 5%' },
+  { id: '0.04',     descripcion: 'IVA Ret 4%' },
+  { id: '0.03',     descripcion: 'IVA Ret 3%' },
+  { id: '0.025',    descripcion: 'IVA Ret 2.5%' },
+  { id: '0.02',     descripcion: 'IVA Ret 2%' },
+  { id: '0.007',    descripcion: 'IVA Ret 0.7%' },
+  { id: '0.005333', descripcion: 'IVA Ret 0.5333%' },
+  { id: '0.005',    descripcion: 'IVA Ret 0.5%' },
+  { id: '0.002',    descripcion: 'IVA Ret 0.2%' },
+  { id: '0',        descripcion: 'IVA Ret 0%' },
+];
+
+const CAT_ISR_RET: { id: string; descripcion: string }[] = [
+  { id: '0.35',    descripcion: 'ISR 35%' },
+  { id: '0.3',     descripcion: 'ISR 30%' },
+  { id: '0.25',    descripcion: 'ISR 25%' },
+  { id: '0.2',     descripcion: 'ISR 20%' },
+  { id: '0.10666', descripcion: 'ISR 10.666%' },
+  { id: '0.1',     descripcion: 'ISR 10%' },
+  { id: '0.054',   descripcion: 'ISR 5.4%' },
+  { id: '0.04',    descripcion: 'ISR 4%' },
+  { id: '0.03',    descripcion: 'ISR 3%' },
+  { id: '0.021',   descripcion: 'ISR 2.10%' },
+  { id: '0.02',    descripcion: 'ISR 2%' },
+  { id: '0.0125',  descripcion: 'ISR 1.25%' },
+  { id: '0.011',   descripcion: 'ISR 1.1%' },
+  { id: '0.01',    descripcion: 'ISR 1%' },
+  { id: '0.009',   descripcion: 'ISR 0.9%' },
+  { id: '0.005',   descripcion: 'ISR 0.5%' },
+  { id: '0.004',   descripcion: 'ISR 0.4%' },
+  { id: '0.001',   descripcion: 'ISR 0.1%' },
+  { id: '0',       descripcion: 'ISR 0%' },
+];
+
+const PAQUETES_COTIZACION: { id: string; nombre: string; descripcion: string | null; estado: string | null }[] = [
+  { id: 'ie14042601', nombre: 'Microdiscectomía Lumbar Tubular',                                                    descripcion: 'Microdiscectomía Lumbar Tubular',                                                    estado: 'Activo' },
+  { id: 'ie14042602', nombre: 'Discectomía Lumbar Endoscópica',                                                     descripcion: 'Discectomía Lumbar Endoscópica',                                                     estado: 'Activo' },
+  { id: 'ie14042603', nombre: 'Discectomía Lumbar Abierta',                                                         descripcion: 'Discectomía Lumbar Abierta',                                                         estado: 'Activo' },
+  { id: 'ie14042604', nombre: 'Termoablación',                                                                      descripcion: 'Termoablación',                                                                      estado: 'Activo' },
+  { id: '7f984d12',   nombre: 'Fijación Lumbar MISS',                                                               descripcion: 'Fijación Lumbar MISS',                                                               estado: 'Activo' },
+  { id: 'ie14042605', nombre: 'Fijación Lumbar MISS  - Cementado',                                                  descripcion: 'Fijación Lumbar MISS  - Cementado',                                                  estado: 'Activo' },
+  { id: '88da0275',   nombre: 'Fijación Lumbar MISS + TLIF - Caja Titanio Expandible',                              descripcion: 'Fijación Lumbar MISS + TLIF - Caja Titanio Expandible',                              estado: 'Activo' },
+  { id: 'ie14042606', nombre: 'Fijación Lumbar MISS Cementado + TLIF - Caja Titanio Expandible',                    descripcion: 'Fijación Lumbar MISS Cementado + TLIF - Caja Titanio Expandible',                    estado: 'Activo' },
+  { id: 'ie14042607', nombre: 'Fijación Lumbar MISS + TLIF - Caja Peek Recta',                                      descripcion: 'Fijación Lumbar MISS + TLIF - Caja Peek Recta',                                      estado: 'Activo' },
+  { id: 'ie14042608', nombre: 'Fijación Lumbar MISS Cementado + TLIF - Caja Peek Recta',                            descripcion: 'Fijación Lumbar MISS Cementado + TLIF - Caja Peek Recta',                            estado: 'Activo' },
+  { id: 'ie14042609', nombre: 'Fijación Lumbar MISS + ALIF',                                                        descripcion: 'Fijación Lumbar MISS + ALIF',                                                        estado: 'Activo' },
+  { id: 'ie14042610', nombre: 'Fijación Lumbar MISS + (OLIF o LLIF) - Caja Lateral Titanio Expandible',             descripcion: 'Fijación Lumbar MISS + (OLIF o LLIF) - Caja Lateral Titanio Expandible',             estado: 'Activo' },
+  { id: 'ie14042611', nombre: 'Fijación Lumbar MISS + (OLIF o LLIF) - Caja Peek',                                   descripcion: 'Fijación Lumbar MISS + (OLIF o LLIF) - Caja Peek',                                   estado: 'Activo' },
+  { id: 'ie14042612', nombre: 'Fijación Lumbar Abierta',                                                            descripcion: 'Fijación Lumbar Abierta',                                                            estado: 'Activo' },
+  { id: 'ie14042613', nombre: 'Fijación Lumbar Abierta + TLIF - Caja Titanio Expandible',                           descripcion: 'Fijación Lumbar Abierta + TLIF - Caja Titanio Expandible',                           estado: 'Activo' },
+  { id: 'ie14042614', nombre: 'Corpectomía Toracolumbar + Fijación MISS',                                           descripcion: 'Corpectomía Toracolumbar + Fijación MISS',                                           estado: 'Activo' },
+  { id: 'ie14042615', nombre: 'Cifoplastía Toracolumbar',                                                           descripcion: 'Cifoplastía Toracolumbar',                                                           estado: 'Activo' },
+  { id: 'ie14042616', nombre: 'Vertebroplastía Toracolumbar',                                                       descripcion: 'Vertebroplastía Toracolumbar',                                                       estado: 'Activo' },
+  { id: 'ie14042617', nombre: 'Fijación Cervical Anterior placa + Caja Peek',                                       descripcion: 'Fijación Cervical Anterior placa + Caja Peek',                                       estado: 'Activo' },
+  { id: 'ie14042618', nombre: 'Fijación Cervical Anterior Caja AutoBloqueada Titanio',                              descripcion: 'Fijación Cervical Anterior Caja AutoBloqueada Titanio',                              estado: 'Activo' },
+  { id: 'ie14042619', nombre: 'Corpectomia Cervical Anterior',                                                      descripcion: 'Corpectomia Cervical Anterior',                                                      estado: 'Activo' },
+  { id: 'ie14042620', nombre: 'Laminectomía + Fijación Cervical Posterior',                                         descripcion: 'Laminectomía + Fijación Cervical Posterior',                                         estado: 'Activo' },
+  { id: 'ie14042621', nombre: 'Fijación Occipito Cervical',                                                         descripcion: 'Fijación Occipito Cervical',                                                         estado: 'Activo' },
+  { id: 'ie14042622', nombre: 'Discoplastía Cervical',                                                              descripcion: 'Discoplastía Cervical',                                                              estado: 'Activo' },
+  { id: 'ie14042623', nombre: 'Resección Tumoral Medular Cervical , Toracia o Lumbar',                              descripcion: 'Resección Tumoral Medular Cervical , Toracia o Lumbar',                              estado: 'Activo' },
+  { id: 'ie14042624', nombre: 'Monitoreo Intraoperatorio con Electromiografía Continua y Estimulada y Potenciales Evocados', descripcion: 'Monitoreo Intraoperatorio con Electromiografía Continua y Estimulada y Potenciales Evocados', estado: 'Activo' },
+];
+
 async function main() {
   console.log('\n[1/6] Sembrando RegimenFiscal...');
   for (const item of REGIMENES_FISCALES) {
@@ -194,7 +323,7 @@ async function main() {
     console.log(`  ✓ ${item.id.padEnd(5)} ${item.udem}`);
   }
 
-  console.log('\n[7/7] Sembrando ObjetosImpuesto...');
+  console.log('\n[7/9] Sembrando ObjetosImpuesto...');
   for (const item of OBJETOS_IMPUESTO) {
     await prisma.objetoImpuesto.upsert({
       where:  { id: item.id },
@@ -204,6 +333,76 @@ async function main() {
     console.log(`  ✓ ${item.id} ${item.descripcion}`);
   }
 
+  console.log('\n[8/9] Sembrando Bancos...');
+  for (const item of BANCOS) {
+    await prisma.banco.upsert({
+      where:  { id: item.id },
+      update: { nombre: item.nombre },
+      create: item,
+    });
+    console.log(`  ✓ ${item.nombre}`);
+  }
+
+  console.log('\n[9/10] Sembrando ClasificacionesGasto...');
+  for (const item of CLASIFICACIONES_GASTO) {
+    await prisma.clasificacionGasto.upsert({
+      where:  { id: item.id },
+      update: { clasificacion: item.clasificacion },
+      create: item,
+    });
+    console.log(`  ✓ ${item.id}`);
+  }
+
+  console.log('\n[10/13] Sembrando CatIVA...');
+  for (const item of CAT_IVA) {
+    await prisma.catIva.upsert({
+      where:  { id: item.id },
+      update: { valor: item.valor, descripcion: item.descripcion },
+      create: item,
+    });
+    console.log(`  ✓ ${item.id.padEnd(5)} ${item.valor}`);
+  }
+
+  console.log('\n[11/13] Sembrando CatIVARet...');
+  for (const item of CAT_IVA_RET) {
+    await prisma.catIvaRet.upsert({
+      where:  { id: item.id },
+      update: { descripcion: item.descripcion },
+      create: item,
+    });
+    console.log(`  ✓ ${item.id.padEnd(10)} ${item.descripcion}`);
+  }
+
+  console.log('\n[12/13] Sembrando CatISRRet...');
+  for (const item of CAT_ISR_RET) {
+    await prisma.catIsrRet.upsert({
+      where:  { id: item.id },
+      update: { descripcion: item.descripcion },
+      create: item,
+    });
+    console.log(`  ✓ ${item.id.padEnd(10)} ${item.descripcion}`);
+  }
+
+  console.log('\n[13/14] Sembrando Conceptos...');
+  for (const item of CONCEPTOS) {
+    await prisma.conceptoMovimiento.upsert({
+      where:  { id: item.id },
+      update: { concepto: item.concepto, tipo: item.tipo },
+      create: item,
+    });
+    console.log(`  ✓ ${item.id}`);
+  }
+
+  console.log('\n[14/14] Sembrando PaquetesCotizacion...');
+  for (const item of PAQUETES_COTIZACION) {
+    await prisma.paqueteCotizacion.upsert({
+      where:  { id: item.id },
+      update: { nombre: item.nombre, descripcion: item.descripcion, estado: item.estado },
+      create: item,
+    });
+    console.log(`  ✓ ${item.id.padEnd(12)} ${item.nombre}`);
+  }
+
   const totalRf  = await prisma.regimenFiscal.count();
   const totalUc  = await prisma.usoCfdi.count();
   const totalFp  = await prisma.formaPago.count();
@@ -211,7 +410,14 @@ async function main() {
   const totalCat = await prisma.categoria.count();
   const totalUdm = await prisma.unidadMedidaSat.count();
   const totalOi  = await prisma.objetoImpuesto.count();
-  console.log(`\n✅ ${totalRf} regímenes fiscales, ${totalUc} usos CFDI, ${totalFp} formas de pago, ${totalTar} tarifas, ${totalCat} categorías, ${totalUdm} unidades de medida, ${totalOi} objetos de impuesto\n`);
+  const totalBan = await prisma.banco.count();
+  const totalCg  = await prisma.clasificacionGasto.count();
+  const totalIva    = await prisma.catIva.count();
+  const totalIvaRet = await prisma.catIvaRet.count();
+  const totalIsrRet = await prisma.catIsrRet.count();
+  const totalConceptos = await prisma.conceptoMovimiento.count();
+  const totalPaquetes = await prisma.paqueteCotizacion.count();
+  console.log(`\n✅ ${totalRf} regímenes fiscales, ${totalUc} usos CFDI, ${totalFp} formas de pago, ${totalTar} tarifas, ${totalCat} categorías, ${totalUdm} unidades de medida, ${totalOi} objetos de impuesto, ${totalBan} bancos, ${totalCg} clasificaciones de gasto, ${totalIva} tasas de IVA, ${totalIvaRet} tasas de IVA retenido, ${totalIsrRet} tasas de ISR retenido, ${totalConceptos} conceptos, ${totalPaquetes} paquetes de cotización\n`);
 }
 
 main()

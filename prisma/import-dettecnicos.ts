@@ -9,9 +9,10 @@ import { PrismaClient } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 const prisma   = new PrismaClient();
-const CSV_PATH = path.join('C:\\Users\\ASUS\\Desktop\\tspine-csv', 'SistemaTspine1.0 - Det_Tecnicos.csv');
+const CSV_PATH = path.join(os.homedir(), 'Desktop', 'tspine-csv', 'SistemaTspine1.0 - Det_Tecnicos.csv');
 
 // ── Column resolver ───────────────────────────────────────────────────────────
 
@@ -138,10 +139,32 @@ async function main() {
 
   const dupIds = [...idCount.entries()].filter(([, c]) => c > 1);
 
-  function printAnalysis(label: string, m: UnresolvedMap) {
+  function printAnalysis(label: string, m: UnresolvedMap, opts?: { summarizePrefix?: string; exampleCount?: number }) {
     if (m.size === 0) { console.log(`  ✓ Todos los ${label} resueltos`); return; }
+
+    const prefix = opts?.summarizePrefix;
+    const exampleCount = opts?.exampleCount ?? 2;
+
+    if (!prefix) {
+      console.log(`  ⚠ ${m.size} ${label} sin resolver:`);
+      [...m.entries()].forEach(([k, entries]) => {
+        console.log(`    - "${k}" (${entries.length} registro${entries.length > 1 ? 's' : ''})`);
+        entries.forEach(({ id, programacion }) => console.log(`        · ${id.padEnd(10)}  prog: ${programacion}`));
+      });
+      return;
+    }
+
+    const resumidos = [...m.entries()].filter(([k]) => k.startsWith(prefix));
+    const detallados = [...m.entries()].filter(([k]) => !k.startsWith(prefix));
+
     console.log(`  ⚠ ${m.size} ${label} sin resolver:`);
-    [...m.entries()].forEach(([k, entries]) => {
+    if (resumidos.length > 0) {
+      console.log(`    - ${resumidos.length} referencias "${prefix}..." (sistema anterior, se omiten del detalle):`);
+      resumidos.slice(0, exampleCount).forEach(([k, entries]) => {
+        console.log(`        ej. "${k}" (${entries.length} registro${entries.length > 1 ? 's' : ''})`);
+      });
+    }
+    detallados.forEach(([k, entries]) => {
       console.log(`    - "${k}" (${entries.length} registro${entries.length > 1 ? 's' : ''})`);
       entries.forEach(({ id, programacion }) => console.log(`        · ${id.padEnd(10)}  prog: ${programacion}`));
     });
@@ -150,8 +173,8 @@ async function main() {
   if (dupIds.length === 0) console.log('  ✓ Sin IDs duplicados');
   else { console.log(`  ⚠ ${dupIds.length} IDs duplicados:`); dupIds.forEach(([id, c]) => console.log(`    - ${id} (${c}x)`)); }
 
-  printAnalysis('Programacion', programacionesNR);
-  printAnalysis('Remision',     remisionesNR);
+  printAnalysis('Programacion', programacionesNR, { summarizePrefix: 'PM' });
+  printAnalysis('Remision',     remisionesNR,     { summarizePrefix: 'RPM' });
   printAnalysis('Tecnico',      tecnicosNR);
 
   // ── [3/4] Truncar ─────────────────────────────────────────────────────────
