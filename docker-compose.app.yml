@@ -24,6 +24,7 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
       LOG_LEVEL: ${LOG_LEVEL}
       FORMAT_LOG: ${FORMAT_LOG}
+      CORS_ORIGINS: ${CORS_ORIGINS}
       DATABASE_URL: postgresql://tspine:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     volumes:
       - ./logs:/app/logs

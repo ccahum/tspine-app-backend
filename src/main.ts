@@ -11,8 +11,15 @@ async function bootstrap() {
     logger: WinstonModule.createLogger(winstonConfig),
   });
 
+  // Cada ambiente define sus propios orígenes permitidos vía CORS_ORIGINS (lista separada
+  // por comas) — evita tener que tocar código y volver a desplegar solo por esto.
+  const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: ['http://localhost:5173'],
+    origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
