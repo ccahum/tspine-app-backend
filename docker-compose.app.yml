@@ -53,6 +53,9 @@ services:
     networks:
       - default
 
+volumes:
+  pgdata:
+
 networks:
   tspine-shared:
     external: true
