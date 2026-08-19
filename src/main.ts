@@ -4,12 +4,16 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { WinstonModule } from 'nest-winston';
 import { AppModule } from './app.module';
 import { winstonConfig } from './config/winston.config';
-import { LoggingInterceptor } from './commons/interceptors/logging.interceptor';
+import { loggingMiddleware } from './commons/middleware/logging.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: WinstonModule.createLogger(winstonConfig),
   });
+
+  // Middleware, no interceptor: corre antes que los Guards (ver comentario en el archivo),
+  // así queda registrada toda petición, incluidas las rechazadas por autenticación.
+  app.use(loggingMiddleware);
 
   // Cada ambiente define sus propios orígenes permitidos vía CORS_ORIGINS (lista separada
   // por comas) — evita tener que tocar código y volver a desplegar solo por esto.
@@ -25,7 +29,6 @@ async function bootstrap() {
   });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.useGlobalInterceptors(new LoggingInterceptor());
 
   const config = new DocumentBuilder()
     .setTitle('TSpine API')

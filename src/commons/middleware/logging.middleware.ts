@@ -1,7 +1,5 @@
-import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
-import { Request, Response } from 'express';
-import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { Logger } from '@nestjs/common';
+import { NextFunction, Request, Response } from 'express';
 
 const SENSITIVE_KEYS = new Set([
   'password', 'passwordhash', 'token', 'accesstoken', 'refreshtoken',
@@ -35,35 +33,25 @@ function safeStringify(value: unknown): string | null {
   }
 }
 
-@Injectable()
-export class LoggingInterceptor implements NestInterceptor {
-  private readonly logger = new Logger('HTTP');
+const logger = new Logger('HTTP');
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const req = context.switchToHttp().getRequest<Request>();
-    const res = context.switchToHttp().getResponse<Response>();
-    const { method, originalUrl, ip, body: requestBody } = req;
-    const start = Date.now();
+// Middleware (no interceptor) a propósito: los Guards de NestJS (ej. JwtAuthGuard) corren
+// ANTES que los interceptors, así que una petición rechazada por falta/invalidez de token
+// nunca llegaría a un interceptor de logging — nunca se vería registrada. El middleware, en
+// cambio, corre a nivel de Express antes de que Nest evalúe guards, así que ve TODA petición,
+// se autorice o no.
+export function loggingMiddleware(req: Request, res: Response, next: NextFunction) {
+  const start = Date.now();
+  const { method, originalUrl, ip, body: requestBody } = req;
 
-    return next.handle().pipe(
-      tap({
-        next: (responseBody) => this.log(method, originalUrl, res.statusCode, start, ip, req, requestBody, responseBody),
-        error: (err: { status?: number; response?: unknown }) =>
-          this.log(method, originalUrl, err?.status ?? 500, start, ip, req, requestBody, err?.response),
-      }),
-    );
-  }
+  let responseBody: unknown;
+  const originalJson = res.json.bind(res);
+  res.json = ((body: unknown) => {
+    responseBody = body;
+    return originalJson(body);
+  }) as typeof res.json;
 
-  private log(
-    method: string,
-    url: string,
-    statusCode: number,
-    start: number,
-    ip: string | undefined,
-    req: Request,
-    requestBody: unknown,
-    responseBody: unknown,
-  ) {
+  res.on('finish', () => {
     const durationMs = Date.now() - start;
     const userId = (req['user'] as { sub?: string } | undefined)?.sub;
     const userPart = userId ? ` user=${userId}` : '';
@@ -71,6 +59,8 @@ export class LoggingInterceptor implements NestInterceptor {
     const resJson = safeStringify(responseBody);
     const reqPart = reqJson ? ` req=${reqJson}` : '';
     const resPart = resJson ? ` res=${resJson}` : '';
-    this.logger.log(`${method} ${url} ${statusCode} ${durationMs}ms ip=${ip}${userPart}${reqPart}${resPart}`);
-  }
+    logger.log(`${method} ${originalUrl} ${res.statusCode} ${durationMs}ms ip=${ip}${userPart}${reqPart}${resPart}`);
+  });
+
+  next();
 }
