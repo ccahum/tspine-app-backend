@@ -13,6 +13,11 @@ RUN npx prisma generate
 
 COPY . .
 
+# El límite de memoria que Node detecta automáticamente en servidores con poca RAM (ej.
+# el Droplet de 2GB) es más bajo de lo que el build realmente necesita — se sube explícitamente
+# para que use el swap configurado en el servidor en vez de fallar por "out of memory".
+ENV NODE_OPTIONS="--max-old-space-size=3072"
+
 RUN npm run build
 
 RUN npm prune --omit=dev
