@@ -1,11 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Request } from 'express';
 import { ProgramacionesService } from './programaciones.service';
 import { ProgramacionQueryDto } from './dto/programacion-query.dto';
 import { ProgramacionListItemDto, ProgramacionListResponseDto } from './dto/programacion-response.dto';
 import { ProgramacionStatsDto } from './dto/programacion-stats.dto';
 import { UpdateFlagsDto } from './dto/update-flags.dto';
 import { CreateProgramacionDto } from './dto/create-programacion.dto';
+import { UpdateProgramacionDto } from './dto/update-programacion.dto';
 import { ProgramacionComparisonResponseDto } from './dto/programacion-comparison.dto';
 
 @ApiTags('Operación - Programaciones')
@@ -44,8 +46,27 @@ export class ProgramacionesController {
   @Post()
   @ApiOperation({ summary: 'Crear nueva programación' })
   @ApiCreatedResponse({ type: ProgramacionListItemDto })
-  async create(@Body() dto: CreateProgramacionDto): Promise<ProgramacionListItemDto> {
-    return this.service.create(dto);
+  async create(@Body() dto: CreateProgramacionDto, @Req() req: Request): Promise<ProgramacionListItemDto> {
+    const user = req['user'] as { sub: string };
+    return this.service.create(dto, user.sub);
+  }
+
+  @Get('sedes')
+  @ApiOperation({ summary: 'Listar sedes (para el selector del formulario)' })
+  async getSedes() {
+    return this.service.getSedes();
+  }
+
+  @Get('hospitales')
+  @ApiOperation({ summary: 'Listar hospitales (para el selector del formulario)' })
+  async getHospitales() {
+    return this.service.getHospitales();
+  }
+
+  @Get('medicos')
+  @ApiOperation({ summary: 'Buscar médicos (Terceros clasificados como DOCTOR) por nombre' })
+  async searchMedicos(@Query('search') search?: string) {
+    return this.service.searchMedicos(search);
   }
 
   @Get(':id')
@@ -58,5 +79,18 @@ export class ProgramacionesController {
   @ApiOperation({ summary: 'Actualizar flags de una programación' })
   async updateFlags(@Param('id') id: string, @Body() dto: UpdateFlagsDto) {
     return this.service.updateFlags(id, dto);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Editar una programación existente' })
+  async update(@Param('id') id: string, @Body() dto: UpdateProgramacionDto) {
+    return this.service.update(id, dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Eliminar una programación (solo si no tiene datos asociados)' })
+  async delete(@Param('id') id: string) {
+    await this.service.delete(id);
+    return { success: true };
   }
 }

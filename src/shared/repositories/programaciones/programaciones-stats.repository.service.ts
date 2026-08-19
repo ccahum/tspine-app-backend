@@ -45,10 +45,21 @@ export class ProgramacionesStatsRepositoryService {
       programacionesMes,
     ] = await this.prisma.$transaction([
       this.prisma.programacion.count({ where }),
-      this.prisma.programacion.count({ where: { ...where, sinRemision: true } }),
-      this.prisma.programacion.count({ where: { ...where, consumoNoValidado: true } }),
-      this.prisma.programacion.count({ where: { ...where, sinComision: true } }),
-      this.prisma.programacion.count({ where: { ...where, cerrada: true } }),
+      this.prisma.programacion.count({ where: { ...where, remisiones: { none: {} } } }),
+      this.prisma.programacion.count({
+        where: {
+          ...where,
+          AND: [{ OR: [{ detConsumos: { none: {} } }, { detConsumos: { some: { valConsumos: { none: {} } } } }] }],
+        },
+      }),
+      this.prisma.programacion.count({
+        where: {
+          ...where,
+          detTecnicos: { none: {} },
+          remisiones: { every: { detTecnicos: { none: {} } } },
+        },
+      }),
+      this.prisma.programacion.count({ where: { ...where, switch: true } }),
       this.prisma.programacion.groupBy({
         by: ['sedeId'],
         where,

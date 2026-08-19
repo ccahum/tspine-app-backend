@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { ProgramacionQueryDto } from '@app/api/operacion/programaciones/dto/programacion-query.dto';
+import { nowMexico } from '@app/commons/date.utils';
 
 const normalizeText = (text: string): string =>
   text
@@ -29,10 +30,31 @@ export class ProgramacionesRepositoryService {
     }
 
     if (sedeId) where.sedeId = sedeId;
-    if (cerrada !== undefined) where.cerrada = cerrada;
-    if (sinRemision !== undefined) where.sinRemision = sinRemision;
-    if (sinComision !== undefined) where.sinComision = sinComision;
-    if (consumoNoValidado !== undefined) where.consumoNoValidado = consumoNoValidado;
+    if (cerrada !== undefined) where.switch = cerrada;
+
+    // sinRemision / sinComision / consumoNoValidado se combinan con AND porque más de uno puede tocar
+    // el mismo campo de relación (ej. "remisiones"), y no se pueden pisar entre sí ni con el OR de búsqueda.
+    const andConditions: any[] = [];
+    if (sinRemision !== undefined) {
+      andConditions.push({ remisiones: sinRemision ? { none: {} } : { some: {} } });
+    }
+    if (sinComision !== undefined) {
+      // Una comisión (Det_Tecnico) puede ligarse directo a la programación o a través de una de sus remisiones
+      andConditions.push(
+        sinComision
+          ? { detTecnicos: { none: {} }, remisiones: { every: { detTecnicos: { none: {} } } } }
+          : { OR: [{ detTecnicos: { some: {} } }, { remisiones: { some: { detTecnicos: { some: {} } } } }] },
+      );
+    }
+    if (consumoNoValidado !== undefined) {
+      // "Sin validar" = no tiene ningún DetConsumo, o tiene al menos uno sin ValConsumo relacionado
+      andConditions.push(
+        consumoNoValidado
+          ? { OR: [{ detConsumos: { none: {} } }, { detConsumos: { some: { valConsumos: { none: {} } } } }] }
+          : { AND: [{ detConsumos: { some: {} } }, { detConsumos: { every: { valConsumos: { some: {} } } } }] },
+      );
+    }
+    if (andConditions.length) where.AND = andConditions;
 
     // Búsqueda normal en BD (sin acentos)
     if (search?.trim()) {
@@ -51,11 +73,14 @@ export class ProgramacionesRepositoryService {
         where,
         skip,
         take: limit,
-        orderBy: { fechaQx: 'desc' },
+        orderBy: [{ fechaQx: 'desc' }, { horaQx: 'asc' }],
         include: {
           sede: { select: { nombre: true } },
           hospital: { select: { nombre: true, ciudadCat: { select: { nombre: true } } } },
           medicos: { include: { medico: { select: { nombreCompleto: true } } } },
+          remisiones: { select: { _count: { select: { detTecnicos: true } } } },
+          detConsumos: { select: { _count: { select: { valConsumos: true } } } },
+          _count: { select: { detTecnicos: true } },
         },
       }),
       this.prisma.programacion.count({ where }),
@@ -70,11 +95,14 @@ export class ProgramacionesRepositoryService {
       const [allData] = await this.prisma.$transaction([
         this.prisma.programacion.findMany({
           where: whereNoSearch,
-          orderBy: { fechaQx: 'desc' },
+          orderBy: [{ fechaQx: 'desc' }, { horaQx: 'asc' }],
           include: {
             sede: { select: { nombre: true } },
             hospital: { select: { nombre: true, ciudadCat: { select: { nombre: true } } } },
             medicos: { include: { medico: { select: { nombreCompleto: true } } } },
+            remisiones: { select: { _count: { select: { detTecnicos: true } } } },
+            detConsumos: { select: { _count: { select: { valConsumos: true } } } },
+            _count: { select: { detTecnicos: true } },
           },
         }),
         this.prisma.programacion.count({ where: whereNoSearch }),
@@ -103,9 +131,12 @@ export class ProgramacionesRepositoryService {
           where: { id },
           include: {
             sede: { select: { nombre: true, id: true } },
-            hospital: { select: { nombre: true, id: true, ciudadCat: { select: { nombre: true } } } },
+            hospital: { select: { nombre: true, id: true, ciudadCat: { select: { nombre: true } }, tercero: { select: { id: true, nombreCompleto: true } } } },
             medicos: { include: { medico: { select: { nombreCompleto: true, id: true } } } },
             tecnicos: { include: { tecnico: { select: { nombreCompleto: true, id: true } } } },
+            remisiones: { select: { _count: { select: { detTecnicos: true } } } },
+            detConsumos: { select: { _count: { select: { valConsumos: true } } } },
+            _count: { select: { detTecnicos: true } },
           },
         }),
         this.prisma.remision.findMany({
@@ -139,9 +170,9 @@ export class ProgramacionesRepositoryService {
           },
           _sum: { valor: true },
         }),
-        // VAL CANT. USADA * COSTO ACTUAL por ValConsumo, excluyendo categoría RENTA
+        // VAL CANT. USADA * COSTO ACTUAL por ValConsumo, excluyendo categoría RENTA y eliminados
         this.prisma.valConsumo.findMany({
-          where: { programacionId: id },
+          where: { programacionId: id, eliminar: { not: true } },
           select: {
             costoActual: true,
             producto: { select: { categoriaId: true } },
@@ -172,13 +203,13 @@ export class ProgramacionesRepositoryService {
     for (const rem of remisionesDefinitivas) {
       const subtotal = subtotalPorRemision.get(rem.id) ?? 0;
       total += subtotal;
-      // V/R DCTO = subtotal * %Dto + V/R DCTO $
-      descuentos += subtotal * Number(rem.porcentajeDcto ?? 0) + Number(rem.vrDctoPesos ?? 0);
+      // V/R DCTO = subtotal * %Dto + V/R DCTO $ — porcentajeDcto se guarda como "10" (10%), no como fracción
+      descuentos += subtotal * (Number(rem.porcentajeDcto ?? 0) / 100) + Number(rem.vrDctoPesos ?? 0);
     }
 
-    // VALOR NC = valor + (total * porcentaje) — siempre computado en tiempo de lectura
+    // VALOR NC = valor + (total * porcentaje) — porcentaje se guarda como "12" (12%), no como fracción
     const nc = notasCredito.reduce((acc, n) => {
-      return acc + Number(n.valor ?? 0) + Number(n.total ?? 0) * Number(n.porcentaje ?? 0);
+      return acc + Number(n.valor ?? 0) + Number(n.total ?? 0) * (Number(n.porcentaje ?? 0) / 100);
     }, 0);
 
     const baseIngreso = total - descuentos - nc;
@@ -187,7 +218,7 @@ export class ProgramacionesRepositoryService {
 
     // COSTO TOTAL = SUM(costoActual * SUM(lotes.cantidad)) excl. categoría RENTA
     const costoTotal = valConsumosCosto
-      .filter(vc => vc.producto?.categoriaId !== 'RENTA')
+      .filter(vc => (vc.producto?.categoriaId ?? '').toUpperCase() !== 'RENTA')
       .reduce((sum, vc) => {
         const cantTotal = vc.lotes.reduce((s, l) => s + (l.cantidad ?? 0), 0);
         return sum + Number(vc.costoActual ?? 0) * cantTotal;
@@ -208,12 +239,45 @@ export class ProgramacionesRepositoryService {
     };
   }
 
+  async countRemisionesYRequisiciones(id: string) {
+    const [remisiones, requisiciones] = await this.prisma.$transaction([
+      this.prisma.remision.count({ where: { programacionId: id } }),
+      this.prisma.requisicion.count({ where: { programacionId: id } }),
+    ]);
+    return { remisiones, requisiciones };
+  }
+
+  async countRelatedData(id: string) {
+    const programacion = await this.prisma.programacion.findUnique({
+      where: { id },
+      select: {
+        _count: {
+          select: {
+            remisiones: true,
+            requisiciones: true,
+            detConsumos: true,
+            detTecnicos: true,
+            valConsumos: true,
+            detTecnicoDetalles: true,
+            remTecnicos: true,
+            gastos: true,
+            fuentes: true,
+            documentos: true,
+            tecnicosSugeridos: true,
+          },
+        },
+      },
+    });
+    return programacion?._count ?? null;
+  }
+
+  async delete(id: string) {
+    return this.prisma.programacion.delete({ where: { id } });
+  }
+
   async updateFlags(id: string, flags: Record<string, boolean | undefined>) {
     const data: any = {};
-    if (flags.sinRemision !== undefined) data.sinRemision = flags.sinRemision;
-    if (flags.consumoNoValidado !== undefined) data.consumoNoValidado = flags.consumoNoValidado;
-    if (flags.sinComision !== undefined) data.sinComision = flags.sinComision;
-    if (flags.cerrada !== undefined) data.cerrada = flags.cerrada;
+    if (flags.cerrada !== undefined) data.switch = flags.cerrada;
     return this.prisma.programacion.update({
       where: { id },
       data,
@@ -221,7 +285,68 @@ export class ProgramacionesRepositoryService {
         sede: { select: { nombre: true } },
         hospital: { select: { nombre: true, ciudadCat: { select: { nombre: true } } } },
         medicos: { include: { medico: { select: { nombreCompleto: true } } } },
+        remisiones: { select: { _count: { select: { detTecnicos: true } } } },
+        detConsumos: { select: { _count: { select: { valConsumos: true } } } },
+        _count: { select: { detTecnicos: true } },
       },
+    });
+  }
+
+  async update(id: string, dto: { fechaQx?: string; horaQx?: string; sedeId?: string; hospitalId?: string; observaciones?: string; consumo?: string; medicoIds?: string[] }) {
+    const data: any = {};
+    if (dto.fechaQx !== undefined) data.fechaQx = new Date(dto.fechaQx);
+    if (dto.horaQx !== undefined) data.horaQx = dto.horaQx;
+    if (dto.sedeId !== undefined) data.sedeId = dto.sedeId;
+    if (dto.hospitalId !== undefined) data.hospitalId = dto.hospitalId;
+    if (dto.observaciones !== undefined) data.observaciones = dto.observaciones;
+    if (dto.consumo !== undefined) data.consumo = dto.consumo;
+
+    if (dto.medicoIds !== undefined) {
+      await this.prisma.programacionMedico.deleteMany({ where: { programacionId: id } });
+      if (dto.medicoIds.length > 0) {
+        await this.prisma.programacionMedico.createMany({
+          data: dto.medicoIds.map(medicoId => ({ programacionId: id, medicoId })),
+        });
+      }
+    }
+
+    return this.prisma.programacion.update({
+      where: { id },
+      data,
+      include: {
+        sede: { select: { id: true, nombre: true } },
+        hospital: { select: { id: true, nombre: true, ciudadCat: { select: { nombre: true } } } },
+        medicos: { include: { medico: { select: { id: true, nombreCompleto: true } } } },
+        remisiones: { select: { _count: { select: { detTecnicos: true } } } },
+        detConsumos: { select: { _count: { select: { valConsumos: true } } } },
+        _count: { select: { detTecnicos: true } },
+      },
+    });
+  }
+
+  async getSedes() {
+    return this.prisma.sede.findMany({
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' },
+    });
+  }
+
+  async getHospitales() {
+    return this.prisma.hospital.findMany({
+      select: { id: true, nombre: true, ciudadCat: { select: { nombre: true } } },
+      orderBy: { nombre: 'asc' },
+    });
+  }
+
+  async searchMedicos(search?: string) {
+    return this.prisma.tercero.findMany({
+      where: {
+        clasificaciones: { some: { clasificacion: 'DOCTOR' } },
+        ...(search?.trim() ? { nombreCompleto: { contains: search, mode: 'insensitive' as const } } : {}),
+      },
+      select: { id: true, nombreCompleto: true },
+      orderBy: { nombreCompleto: 'asc' },
+      take: 20,
     });
   }
 
@@ -236,47 +361,21 @@ export class ProgramacionesRepositoryService {
     return `PRO_${String(Number.isNaN(num) ? 1 : num + 1).padStart(7, '0')}`;
   }
 
-  async create(createData: any) {
-    const { fechaQx, horaQx, sede, hospital, observaciones, consumo, medicos } = createData;
-
-    let sedeId: string | null = null;
-    let hospitalId: string | null = null;
-
-    if (sede) {
-      const sedeRecord = await this.prisma.sede.findFirst({
-        where: { nombre: { contains: sede, mode: 'insensitive' } },
-      });
-      sedeId = sedeRecord?.id ?? null;
-    }
-
-    if (hospital) {
-      const hospitalRecord = await this.prisma.hospital.findFirst({
-        where: { nombre: { contains: hospital, mode: 'insensitive' } },
-      });
-      if (hospitalRecord) {
-        hospitalId = hospitalRecord.id;
-      } else {
-        const newHospital = await this.prisma.hospital.create({
-          data: { nombre: hospital },
-        });
-        hospitalId = newHospital.id;
-      }
-    }
-
+  async create(dto: { fechaQx?: string; horaQx?: string; sedeId?: string; hospitalId?: string; observaciones?: string; consumo?: string; medicoIds?: string[] }, usuarioId: string) {
     const id = await this.generateId();
     const programacion = await this.prisma.programacion.create({
       data: {
         id,
-        fechaQx: fechaQx ? new Date(fechaQx) : null,
-        horaQx: horaQx ?? null,
-        sedeId: sedeId,
-        hospitalId: hospitalId,
-        observaciones: observaciones ?? null,
-        consumo: consumo ?? null,
+        creadoPor: usuarioId,
+        createdAt: nowMexico(),
+        fechaQx: dto.fechaQx ? new Date(dto.fechaQx) : null,
+        horaQx: dto.horaQx ?? null,
+        sedeId: dto.sedeId ?? null,
+        hospitalId: dto.hospitalId ?? null,
+        observaciones: dto.observaciones ?? null,
+        consumo: dto.consumo ?? null,
         medicos: {
-          create: (medicos || []).map((medicoId: string) => ({
-            medicoId: medicoId,
-          })),
+          create: (dto.medicoIds ?? []).map(medicoId => ({ medicoId })),
         },
       },
       include: {

@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsDateString, IsOptional, IsString } from 'class-validator';
 
-export class CreateProgramacionDto {
+export class UpdateProgramacionDto {
   @ApiPropertyOptional({ description: 'Fecha de la cirugía (yyyy-MM-dd)' })
   @IsOptional() @IsDateString()
   fechaQx?: string;
