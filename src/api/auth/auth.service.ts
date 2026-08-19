@@ -18,11 +18,12 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto): Promise<LoginResponseDto> {
-    const usuario = await this.usuariosRepository.findByCorreo(dto.correo);
+    const correo = `${dto.usuario}@${Constants.Auth.EMAIL_DOMAIN}`;
+    const usuario = await this.usuariosRepository.findByCorreo(correo);
 
     if (!usuario || !usuario.passwordHash) {
-      LoggerExtensions.writeWarning(this.logger, 'Intento de login con correo no registrado', {
-        correo: dto.correo,
+      LoggerExtensions.writeWarning(this.logger, 'Intento de login con usuario no registrado', {
+        usuario: dto.usuario,
       });
       throw new UnauthorizedException(Constants.Error.INVALID_CREDENTIALS);
     }
@@ -31,7 +32,7 @@ export class AuthService {
 
     if (!passwordValido) {
       LoggerExtensions.writeWarning(this.logger, 'Contraseña incorrecta en login', {
-        correo: dto.correo,
+        usuario: dto.usuario,
       });
       throw new UnauthorizedException(Constants.Error.INVALID_CREDENTIALS);
     }
