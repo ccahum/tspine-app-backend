@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
 
@@ -44,6 +45,13 @@ export function loggingMiddleware(req: Request, res: Response, next: NextFunctio
   const start = Date.now();
   const { method, originalUrl, ip, body: requestBody } = req;
 
+  // Identificador único por petición — permite ubicar en el log exactamente esta transacción
+  // (útil cuando hay varias peticiones simultáneas entremezcladas) y se lo devolvemos al
+  // cliente en un encabezado, para que si alguien reporta un problema puedas ubicarlo sin
+  // tener que adivinar por fecha/hora.
+  const requestId = randomUUID();
+  res.setHeader('X-Request-Id', requestId);
+
   let responseBody: unknown;
   const originalJson = res.json.bind(res);
   res.json = ((body: unknown) => {
@@ -59,7 +67,7 @@ export function loggingMiddleware(req: Request, res: Response, next: NextFunctio
     const resJson = safeStringify(responseBody);
     const reqPart = reqJson ? ` req=${reqJson}` : '';
     const resPart = resJson ? ` res=${resJson}` : '';
-    logger.log(`${method} ${originalUrl} ${res.statusCode} ${durationMs}ms ip=${ip}${userPart}${reqPart}${resPart}`);
+    logger.log(`[${requestId}] ${method} ${originalUrl} ${res.statusCode} ${durationMs}ms ip=${ip}${userPart}${reqPart}${resPart}`);
   });
 
   next();
