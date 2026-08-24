@@ -86,12 +86,7 @@ export class AuthService {
       update: { secreto: encryptTotpSecret(secret), activado: false },
     });
 
-    const baseUri = authenticator.keyuri(usuario.correo, TOTP_ISSUER, secret);
-    // El parámetro "image" es una extensión de facto (no forma parte del RFC 6238) que apps como
-    // Authy sí respetan para mostrar un ícono junto a la cuenta — requiere una URL pública con
-    // HTTPS, así que solo se agrega si TOTP_ICON_URL está configurada (ver .env.app.example).
-    const iconUrl = process.env.TOTP_ICON_URL;
-    const otpauthUri = iconUrl ? `${baseUri}&image=${encodeURIComponent(iconUrl)}` : baseUri;
+    const otpauthUri = authenticator.keyuri(usuario.correo, TOTP_ISSUER, secret);
     const qrDataUrl = await QRCode.toDataURL(otpauthUri);
 
     return { qrDataUrl, secret };

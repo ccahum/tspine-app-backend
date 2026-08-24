@@ -16,7 +16,6 @@ import { BusquedaGlobalModule } from './api/busqueda-global/busqueda-global.modu
 import { SolicitudProgramacionModule } from './api/operacion/solicitud-programacion/solicitud-programacion.module';
 import { NotificacionesModule } from './api/notificaciones/notificaciones.module';
 import { UsuariosAdminModule } from './api/administracion/usuarios/usuarios-admin.module';
-import { BrandingModule } from './api/branding/branding.module';
 
 @Module({
   imports: [
@@ -35,7 +34,6 @@ import { BrandingModule } from './api/branding/branding.module';
     SolicitudProgramacionModule,
     NotificacionesModule,
     UsuariosAdminModule,
-    BrandingModule,
   ],
   providers: [
     {

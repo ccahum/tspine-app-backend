@@ -2,12 +2,10 @@
 # Caddy genera y renueva certificados HTTPS automáticamente (Let's Encrypt) para cada uno.
 
 qa-api.luminar-tspine.com {
-	# El webhook de Google Chat y el ícono de marca quedan fuera del candado: Google no tiene
-	# (ni puede tener) el usuario/contraseña, y Authy descarga el ícono del QR de 2FA sin poder
-	# pasar por un login — ambos endpoints ya son públicos a nivel de la aplicación (@Public()).
+	# El webhook de Google Chat queda fuera del candado — Google no tiene (ni puede tener)
+	# el usuario/contraseña, y ese endpoint ya es público a nivel de la aplicación (@Public()).
 	@notWebhook {
 		not path /integraciones/google-chat/*
-		not path /branding/icon.png
 	}
 	basicauth @notWebhook {
 		# Generado con: docker run --rm caddy caddy hash-password --plaintext 'TU_CONTRASEÑA'
