@@ -12,6 +12,11 @@ import { PreciosEspecialesModule } from './api/operacion/precios-especiales/prec
 import { CotizacionesModule } from './api/operacion/cotizaciones/cotizaciones.module';
 import { AutorizacionConsumosModule } from './api/operacion/autorizacion-consumos/autorizacion-consumos.module';
 import { GoogleChatModule } from './api/integrations/google-chat/google-chat.module';
+import { BusquedaGlobalModule } from './api/busqueda-global/busqueda-global.module';
+import { SolicitudProgramacionModule } from './api/operacion/solicitud-programacion/solicitud-programacion.module';
+import { NotificacionesModule } from './api/notificaciones/notificaciones.module';
+import { UsuariosAdminModule } from './api/administracion/usuarios/usuarios-admin.module';
+import { BrandingModule } from './api/branding/branding.module';
 
 @Module({
   imports: [
@@ -26,6 +31,11 @@ import { GoogleChatModule } from './api/integrations/google-chat/google-chat.mod
     CotizacionesModule,
     AutorizacionConsumosModule,
     GoogleChatModule,
+    BusquedaGlobalModule,
+    SolicitudProgramacionModule,
+    NotificacionesModule,
+    UsuariosAdminModule,
+    BrandingModule,
   ],
   providers: [
     {

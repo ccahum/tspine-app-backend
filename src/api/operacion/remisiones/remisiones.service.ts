@@ -69,6 +69,7 @@ export class RemisionesService {
       ciudad: r.programacion?.hospital?.ciudadCat?.nombre ?? null,
       hospital: r.programacion?.hospital?.nombre ?? null,
       tarifa: r.tarifa?.nombre ?? null,
+      empresa: r.empresa?.nombreCompleto ?? null,
       medicos: (r.programacion?.medicos ?? []).map((m: any) => m.medico.nombreCompleto),
     }));
 

@@ -1,9 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
+import { esSuperAdminPerfil } from '@app/commons/authorization/super-admin.util';
 import { ESTADOS_AUTORIZACION, EstadoAutorizacion } from './dto/autorizacion-consumo-query.dto';
 import { UpdateEstadoAutorizacionDto } from './dto/update-estado-autorizacion.dto';
-
-const PERFIL_SUPER_ADMIN = 'SA';
 
 const VAL_CONSUMO_SELECT = {
   id: true,
@@ -69,10 +68,7 @@ export class AutorizacionConsumosService {
       },
     });
 
-    // perfilId === 'SA' es el marcador de super-admin del seed de desarrollo (admin/qatester);
-    // perfil.nombre === 'SA' cubre además un PERFIL real importado de AppSheet con ese nombre literal.
-    const esSuperAdmin = usuario?.perfilId === PERFIL_SUPER_ADMIN
-      || usuario?.perfil?.nombre?.toUpperCase() === PERFIL_SUPER_ADMIN;
+    const esSuperAdmin = esSuperAdminPerfil(usuario);
     const sedesAutorizadas = new Set((usuario?.sedesAutorizaciones ?? []).map(s => s.sedeId));
 
     return { esSuperAdmin, sedesAutorizadas };

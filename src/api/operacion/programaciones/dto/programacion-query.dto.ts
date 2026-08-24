@@ -60,4 +60,10 @@ export class ProgramacionQueryDto {
   @Type(() => Boolean)
   @IsBoolean()
   consumoNoValidado?: boolean;
+
+  @ApiPropertyOptional({ description: 'Solo programaciones con al menos una requisición (regla para poder agregarles una remisión)' })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  conRequisicion?: boolean;
 }

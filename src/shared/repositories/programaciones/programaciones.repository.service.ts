@@ -14,7 +14,7 @@ export class ProgramacionesRepositoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: ProgramacionQueryDto) {
-    const { page = 1, limit = 50, dateFrom, dateTo, sedeId, search, cerrada, sinRemision, sinComision, consumoNoValidado } = query;
+    const { page = 1, limit = 50, dateFrom, dateTo, sedeId, search, cerrada, sinRemision, sinComision, consumoNoValidado, conRequisicion } = query;
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -54,6 +54,7 @@ export class ProgramacionesRepositoryService {
           : { AND: [{ detConsumos: { some: {} } }, { detConsumos: { every: { valConsumos: { some: {} } } } }] },
       );
     }
+    if (conRequisicion) andConditions.push({ requisiciones: { some: {} } });
     if (andConditions.length) where.AND = andConditions;
 
     // Búsqueda normal en BD (sin acentos)

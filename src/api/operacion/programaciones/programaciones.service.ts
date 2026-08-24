@@ -36,6 +36,7 @@ export class ProgramacionesService {
 
     const items: ProgramacionListItemDto[] = data.map((p: any) => ({
       id: p.id,
+      numProgram: p.numProgram ?? null,
       fechaQx: p.fechaQx,
       horaQx: p.horaQx,
       sede: p.sede?.nombre ?? null,
@@ -88,6 +89,7 @@ export class ProgramacionesService {
     const updated = await this.repository.updateFlags(id, dto as Record<string, boolean | undefined>);
     return {
       id: updated.id,
+      numProgram: updated.numProgram ?? null,
       fechaQx: updated.fechaQx,
       horaQx: updated.horaQx,
       sede: updated.sede?.nombre ?? null,
@@ -138,6 +140,7 @@ export class ProgramacionesService {
     const created = await this.repository.create(dto, usuarioId);
     return {
       id: created.id,
+      numProgram: created.numProgram ?? null,
       fechaQx: created.fechaQx,
       horaQx: created.horaQx,
       sede: created.sede?.nombre ?? null,
@@ -159,6 +162,7 @@ export class ProgramacionesService {
     const updated = await this.repository.update(id, dto);
     return {
       id: updated.id,
+      numProgram: updated.numProgram ?? null,
       fechaQx: updated.fechaQx,
       horaQx: updated.horaQx,
       sede: updated.sede?.nombre ?? null,

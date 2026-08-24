@@ -541,6 +541,7 @@ model Sede {
   compras                  Compra[]
   movimientosCaja          MovimientoCaja[]
   cotizaciones             Cotizacion[]
+  solicitudesProgramacion  SolicitudProgramacion[]
 
   @@map("sedes")
 }
@@ -679,6 +680,9 @@ model Tercero {
   cotizacionesResponsableEconomico Cotizacion[]         @relation("CotizacionResponsable")
   cotizacionesEmpresa              Cotizacion[]         @relation("CotizacionEmpresa")
   detCotizaHospital                DetCotiza[]          @relation("DetCotizaHospital")
+  solicitudesProgramacionSolicitante SolicitudProgramacion[]      @relation("SolicitudProgramacionSolicitante")
+  solicitudesProgramacionRevisor     SolicitudProgramacion[]      @relation("SolicitudProgramacionRevisor")
+  solicitudesProgramacionMedico      SolicitudProgramacionMedico[]
   cargo                    Cargo?                   @relation(fields: [cargoId], references: [id])
   ciudad                   Ciudad?                  @relation(fields: [ciudadId], references: [id])
   estado                   Estado?                  @relation(fields: [estadoId], references: [id])
@@ -686,8 +690,41 @@ model Tercero {
   perfil                   Perfil?                  @relation(fields: [perfilId], references: [id])
   sede                     Sede?                    @relation(fields: [sedeId], references: [id])
   tarifa                   Tarifa?                  @relation(fields: [tarifaId], references: [id])
+  notificaciones           Notificacion[]
+  totp                     TerceroTotp?
 
   @@map("terceros")
+}
+
+// Segundo factor de autenticación (TOTP, RFC 6238) obligatorio para todo usuario del sistema.
+// El secreto se guarda cifrado (AES-256-GCM, ver totp-crypto.util.ts) — nunca en texto plano.
+model TerceroTotp {
+  terceroId String   @id @map("tercero_id")
+  secreto   String
+  activado  Boolean  @default(false)
+  creadoEn  DateTime @default(now()) @map("creado_en")
+
+  tercero Tercero @relation(fields: [terceroId], references: [id], onDelete: Cascade)
+
+  @@map("tercero_totp")
+}
+
+// Notificaciones genéricas para la campana del header. Cualquier módulo puede crear una (ver
+// NotificacionesService.crear) con su propio título/mensaje/link — no hay que tocar la campana
+// cada vez que se agregue un tipo nuevo (ej. próximamente: consumos por autorizar, etc.).
+model Notificacion {
+  id        String   @id @default(uuid())
+  usuarioId String   @map("usuario_id")
+  tipo      String
+  titulo    String
+  mensaje   String
+  link      String?
+  leida     Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  usuario Tercero @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("notificaciones")
 }
 
 model TerceroClasificacion {
@@ -746,6 +783,7 @@ model Hospital {
   ciudadCat      Ciudad?        @relation(fields: [ciudadId], references: [id])
   tercero        Tercero?       @relation(fields: [terceroId], references: [id])
   programaciones Programacion[]
+  solicitudesProgramacion SolicitudProgramacion[]
 
   @@map("hospitales")
 }
@@ -790,8 +828,51 @@ model Programacion {
   hospital            Hospital?             @relation(fields: [hospitalId], references: [id])
   sede                Sede?                 @relation(fields: [sedeId], references: [id])
   creadoPorTercero    Tercero?              @relation("ProgramacionCreadoPor", fields: [creadoPor], references: [id])
+  solicitudProgramacion SolicitudProgramacion?
 
   @@map("programaciones")
+}
+
+// Solicitud de programación: flujo nuevo (no existía en el sistema viejo de AppSheet) donde
+// cualquier usuario puede solicitar una programación quirúrgica, y un revisor (por ahora solo
+// super-admin, ver PERFIL_SUPER_ADMIN en autorizacion-consumos — el mismo patrón que ya usa
+// Autorización de Consumos) la aprueba o rechaza con motivo. Al aprobarla se crea la Programación
+// real (reusando ProgramacionesRepositoryService.create) y queda enlazada vía programacionId.
+model SolicitudProgramacion {
+  id             String    @id @default(uuid())
+  fechaQx        DateTime? @map("fecha_qx") @db.Date
+  horaQx         String?   @map("hora_qx")
+  sedeId         String?   @map("sede_id")
+  hospitalId     String?   @map("hospital_id")
+  consumo        String?
+  observaciones  String?
+  estado         String    @default("PENDIENTE")
+  motivoRechazo  String?   @map("motivo_rechazo")
+  solicitanteId  String?   @map("solicitante_id")
+  revisorId      String?   @map("revisor_id")
+  fechaRevision  DateTime? @map("fecha_revision")
+  programacionId String?   @unique @map("programacion_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  sede         Sede?                          @relation(fields: [sedeId], references: [id])
+  hospital     Hospital?                      @relation(fields: [hospitalId], references: [id])
+  solicitante  Tercero?                       @relation("SolicitudProgramacionSolicitante", fields: [solicitanteId], references: [id])
+  revisor      Tercero?                       @relation("SolicitudProgramacionRevisor",     fields: [revisorId],     references: [id])
+  programacion Programacion?                  @relation(fields: [programacionId], references: [id])
+  medicos      SolicitudProgramacionMedico[]
+
+  @@map("solicitudes_programacion")
+}
+
+model SolicitudProgramacionMedico {
+  solicitudId String @map("solicitud_id")
+  medicoId    String @map("medico_id")
+
+  solicitud SolicitudProgramacion @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  medico    Tercero               @relation(fields: [medicoId], references: [id])
+
+  @@id([solicitudId, medicoId])
+  @@map("solicitud_programacion_medicos")
 }
 
 model TecnicoSugerido {

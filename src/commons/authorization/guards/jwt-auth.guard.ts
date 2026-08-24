@@ -38,6 +38,14 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = await this.jwtService.verifyAsync(token);
+
+      // Un token "pendiente" (emitido tras usuario/contraseña, antes de validar el código 2FA)
+      // no es una sesión completa — solo sirve para los endpoints de /auth/2fa/*, que lo validan
+      // ellos mismos. No debe autorizar ningún otro endpoint.
+      if (payload?.type === 'PENDING_2FA') {
+        throw new UnauthorizedException(Constants.Error.AUTHORIZATION_TOKEN_INVALID);
+      }
+
       request['user'] = payload;
 
       LoggerExtensions.writeDebug(this.logger, 'JWT validado correctamente', {

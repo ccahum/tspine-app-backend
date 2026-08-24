@@ -22,6 +22,7 @@ const computeConsumoNoValidado = (p: any): boolean =>
 
 const REMISION_LIST_INCLUDE = {
   tarifa: { select: { nombre: true } },
+  empresa: { select: { nombreCompleto: true } },
   programacion: {
     select: {
       id: true,
