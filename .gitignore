@@ -1,12 +1,14 @@
 node_modules
 dist
 logs
+uploads
 coverage
 
 # Environment variables
 .env
 .env.prod
 .env.qa
+.env.imports
 
 # Google credentials (never commit)
 google-credentials.json

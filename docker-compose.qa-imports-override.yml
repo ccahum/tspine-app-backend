@@ -1,0 +1,13 @@
+# Override TEMPORAL, solo para QA — expone Postgres a 127.0.0.1 (nunca al público) para
+# que el cron de imports diarios (prisma/run-daily-sync.sh), que corre en el host fuera de
+# Docker, pueda conectarse a la base de datos.
+#
+# Uso (agregar el -f extra al comando de deploy normal de QA):
+#   docker compose -p qa --env-file .env.qa -f docker-compose.app.yml -f docker-compose.qa-imports-override.yml up -d --build
+#
+# BORRAR este archivo (y quitar el -f del deploy, y la línea del crontab) en cuanto se
+# libere producción y los imports desde Sheets ya no sean necesarios.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
