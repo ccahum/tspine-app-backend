@@ -9,6 +9,8 @@ import { UpdateDetRequisicionDto } from './dto/update-det-requisicion.dto';
 import { CreateRemisionDto } from './dto/create-remision.dto';
 import { UpdateRemisionDto } from './dto/update-remision.dto';
 import { CreateTecnicoSugeridoDto } from './dto/create-tecnico-sugerido.dto';
+import { CreateValConsumoLoteDto } from './dto/create-val-consumo-lote.dto';
+import { CreateDocumentoProgramacionDto } from './dto/create-documento-programacion.dto';
 
 @Injectable()
 export class RemisionesService {
@@ -106,6 +108,14 @@ export class RemisionesService {
     return this.repo.getValConsumoDetalle(id);
   }
 
+  findAlmacenes(sedeId?: string) {
+    return this.repo.findAlmacenes(sedeId);
+  }
+
+  createValConsumoLote(dto: CreateValConsumoLoteDto, usuarioId: string) {
+    return this.repo.createValConsumoLote(dto, usuarioId);
+  }
+
   getDetTecnicoDetalle(id: string) {
     return this.repo.getDetTecnicoDetalle(id);
   }
@@ -190,6 +200,14 @@ export class RemisionesService {
     return this.repo.findDocumentosByProgramacion(programacionId);
   }
 
+  createDocumentoProgramacion(dto: CreateDocumentoProgramacionDto, usuarioId: string) {
+    return this.repo.createDocumentoProgramacion(dto, usuarioId);
+  }
+
+  getDocumentoProgramacionArchivo(id: string) {
+    return this.repo.getDocumentoProgramacionArchivo(id);
+  }
+
   getById(id: string) {
     return this.repo.getById(id);
   }
@@ -200,5 +218,9 @@ export class RemisionesService {
 
   deleteRemision(id: string) {
     return this.repo.deleteRemision(id);
+  }
+
+  convertirEnFactura(id: string, usuarioId: string) {
+    return this.repo.convertirEnFactura(id, usuarioId);
   }
 }

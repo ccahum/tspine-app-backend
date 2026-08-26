@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { RemisionQueryDto } from '@app/api/operacion/remisiones/dto/remision-query.dto';
 import { CreateComisionDto } from '@app/api/operacion/remisiones/dto/create-comision.dto';
@@ -8,6 +8,9 @@ import { CreateDetRequisicionDto } from '@app/api/operacion/remisiones/dto/creat
 import { CreateRemisionDto } from '@app/api/operacion/remisiones/dto/create-remision.dto';
 import { UpdateRemisionDto } from '@app/api/operacion/remisiones/dto/update-remision.dto';
 import { CreateTecnicoSugeridoDto } from '@app/api/operacion/remisiones/dto/create-tecnico-sugerido.dto';
+import { CreateValConsumoLoteDto } from '@app/api/operacion/remisiones/dto/create-val-consumo-lote.dto';
+import { CreateDocumentoProgramacionDto } from '@app/api/operacion/remisiones/dto/create-documento-programacion.dto';
+import { decodeBase64DataUrl, resolveUploadPath, saveUploadFile, uploadFileExists } from '@app/commons/file-storage.utils';
 import { nowMexico } from '@app/commons/date.utils';
 
 const normalizeText = (text: string): string =>
@@ -583,6 +586,28 @@ export class RemisionesRepositoryService {
         fecha: l.marcaTiempo,
       })),
     };
+  }
+
+  async findAlmacenes(sedeId?: string) {
+    return this.prisma.almacen.findMany({
+      where: sedeId ? { sedeId } : undefined,
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' },
+    });
+  }
+
+  async createValConsumoLote(dto: CreateValConsumoLoteDto, usuarioId: string) {
+    return this.prisma.valConsumoLote.create({
+      data: {
+        id: randomUUID(),
+        valConsumoId: dto.valConsumoId,
+        sedeId: dto.sedeId,
+        almacenId: dto.almacenId,
+        cantidad: dto.cantidad,
+        registradoPorId: usuarioId,
+        marcaTiempo: nowMexico(),
+      },
+    });
   }
 
   /** Gasto.TOTAL = VALOR + VALOR SIN IVA + IVA $ − IVA RET $ − ISR RET $ + ISH $ */
@@ -1243,7 +1268,7 @@ export class RemisionesRepositoryService {
   }
 
   async findDocumentosByProgramacion(programacionId: string) {
-    return this.prisma.documentoProgramacion.findMany({
+    const documentos = await this.prisma.documentoProgramacion.findMany({
       where: { programacionId },
       select: {
         id: true,
@@ -1255,6 +1280,41 @@ export class RemisionesRepositoryService {
       },
       orderBy: { cargadoEl: 'asc' },
     });
+    return documentos.map(d => ({ ...d, archivoDisponible: uploadFileExists(d.documento) }));
+  }
+
+  async createDocumentoProgramacion(dto: CreateDocumentoProgramacionDto, usuarioId: string) {
+    const contents = decodeBase64DataUrl(dto.documento);
+    const MAX_DOCUMENTO_BYTES = 8 * 1024 * 1024;
+    if (contents.length > MAX_DOCUMENTO_BYTES) {
+      throw new BadRequestException('El archivo es demasiado grande (máximo 8MB).');
+    }
+
+    const id = randomUUID();
+    const rutaRelativa = saveUploadFile('documentos-programacion', `${id}.pdf`, contents);
+
+    const documento = await this.prisma.documentoProgramacion.create({
+      data: {
+        id,
+        programacionId: dto.programacionId,
+        nombre: dto.nombre,
+        documento: rutaRelativa,
+        cargadoEl: nowMexico(),
+        cargadoPorId: usuarioId,
+      },
+    });
+    return { ...documento, archivoDisponible: true };
+  }
+
+  async getDocumentoProgramacionArchivo(id: string) {
+    const documento = await this.prisma.documentoProgramacion.findUnique({
+      where: { id },
+      select: { nombre: true, documento: true },
+    });
+    if (!documento?.documento || !uploadFileExists(documento.documento)) {
+      throw new NotFoundException('Documento no disponible');
+    }
+    return { path: resolveUploadPath(documento.documento), nombre: documento.nombre ?? 'documento' };
   }
 
   async findGastosByProgramacion(programacionId: string) {
@@ -1550,7 +1610,113 @@ export class RemisionesRepositoryService {
       })),
       bonosComisiones,
       facturas,
+      puedeConvertirFactura: detConsumos.some(d => {
+        const valor = Number(d.valor ?? 0);
+        const facturado = d.producto?.id ? (facturadoPorProducto.get(d.producto.id) ?? 0) : 0;
+        return (valor - facturado) > 0;
+      }),
     };
+  }
+
+  /**
+   * Replica el grupo de acciones "Convertir en Factura" de AppSheet:
+   * 1) "Convertir en Factura 2" — crea la Factura con los datos generales de la remisión.
+   * 2) "EnviarItems" → "Enviar a Facturar" — por cada Det_Consumo con saldo pendiente
+   *    (mismo cálculo de FACTURADO/POR FACTURAR que getById), crea su línea en DetalleFactura.
+   * 3) "EnviadoaCxC" — marca la remisión como enviada a Cuentas por Cobrar (cxc = true).
+   */
+  async convertirEnFactura(remisionId: string, usuarioId: string) {
+    const remision = await this.prisma.remision.findUnique({
+      where: { id: remisionId },
+      select: {
+        id: true,
+        paciente: true,
+        vrDctoPesos: true,
+        programacion: {
+          select: {
+            sedeId: true,
+            fechaQx: true,
+            hospital: { select: { nombre: true } },
+            medicos: { select: { medico: { select: { nombreCompleto: true } } } },
+          },
+        },
+      },
+    });
+    if (!remision) throw new NotFoundException('Remisión no encontrada');
+
+    const detConsumos = await this.prisma.detConsumo.findMany({
+      where: { remisionId, eliminar: { not: true } },
+      select: {
+        cantidad: true,
+        valorUnitario: true,
+        valor: true,
+        producto: { select: { id: true, nombre: true, codigoSat: true, udemId: true, objetoImpuestoId: true } },
+      },
+    });
+
+    const detallesFacturaExistentes = await this.prisma.detalleFactura.findMany({
+      where: { facturacion: { remisionId } },
+      select: { productoId: true, cantidad: true, precioUnitario: true, descuento: true },
+    });
+    const facturadoPorProducto = new Map<string, number>();
+    for (const df of detallesFacturaExistentes) {
+      if (!df.productoId) continue;
+      const subTotal = Number(df.cantidad ?? 0) * Number(df.precioUnitario ?? 0) - Number(df.descuento ?? 0);
+      facturadoPorProducto.set(df.productoId, (facturadoPorProducto.get(df.productoId) ?? 0) + subTotal);
+    }
+
+    const consumosPorFacturar = detConsumos.filter(d => {
+      const valor = Number(d.valor ?? 0);
+      const facturado = d.producto?.id ? (facturadoPorProducto.get(d.producto.id) ?? 0) : 0;
+      return (valor - facturado) > 0;
+    });
+
+    if (consumosPorFacturar.length === 0) {
+      throw new BadRequestException('No hay consumos pendientes por facturar en esta remisión');
+    }
+
+    const doctor = remision.programacion?.medicos.map(m => m.medico.nombreCompleto).join(', ') || null;
+
+    return this.prisma.$transaction(async tx => {
+      const factura = await tx.factura.create({
+        data: {
+          id: randomUUID(),
+          marcaDeTiempo: nowMexico(),
+          fechaCreacion: nowMexico(),
+          generadaPorId: usuarioId,
+          remisionId: remision.id,
+          doctor,
+          hospital: remision.programacion?.hospital?.nombre ?? null,
+          paciente: remision.paciente,
+          fechaCirugia: remision.programacion?.fechaQx ?? null,
+          // El "[NC]" de la fórmula original de AppSheet (Descuento Global = [V/R DCTO]+[NC])
+          // sumaba un Ref virtual roto que siempre evaluaba vacío — mismo caso ya documentado
+          // arriba en getById() para el cálculo de SALDO. Se replica ese comportamiento (legado)
+          // a propósito: no se suma ningún NC real, solo el descuento manual de la remisión.
+          descuentoGlobal: remision.vrDctoPesos ?? 0,
+          sedeId: remision.programacion?.sedeId ?? null,
+        },
+      });
+
+      await tx.detalleFactura.createMany({
+        data: consumosPorFacturar.map(d => ({
+          id: randomUUID(),
+          facturacionId: factura.id,
+          productoId: d.producto?.id ?? null,
+          descripcion: d.producto?.nombre ?? null,
+          cantidad: d.cantidad,
+          precioUnitario: d.valorUnitario,
+          ivaId: '0.16',
+          codigoSat: d.producto?.codigoSat ?? null,
+          unidadMedidaId: d.producto?.udemId ?? null,
+          objetoImpuestoId: d.producto?.objetoImpuestoId ?? null,
+        })),
+      });
+
+      await tx.remision.update({ where: { id: remisionId }, data: { cxc: true } });
+
+      return factura;
+    });
   }
 
   /** Solo se pueden editar remisiones en estado Tramitada o Descorche. */

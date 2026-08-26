@@ -33,7 +33,7 @@ COPY --from=builder /app/dist        ./dist
 COPY --from=builder /app/prisma      ./prisma
 COPY package.json ./
 
-RUN mkdir -p logs
+RUN mkdir -p logs uploads
 
 EXPOSE 3000
 

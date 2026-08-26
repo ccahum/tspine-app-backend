@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request, Response } from 'express';
+import { createReadStream } from 'fs';
 import { RemisionesService } from './remisiones.service';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
 import { RemisionQueryDto } from './dto/remision-query.dto';
@@ -12,6 +13,9 @@ import { UpdateRemisionDto } from './dto/update-remision.dto';
 import { CreateTecnicoSugeridoDto } from './dto/create-tecnico-sugerido.dto';
 import { CreateDetRequisicionDto } from './dto/create-det-requisicion.dto';
 import { UpdateDetRequisicionDto } from './dto/update-det-requisicion.dto';
+import { CreateValConsumoLoteDto } from './dto/create-val-consumo-lote.dto';
+import { CreateDocumentoProgramacionDto } from './dto/create-documento-programacion.dto';
+import { SuperAdminOnly } from '@app/commons/decorators/super-admin-only.decorator';
 
 @ApiTags('Operación - Remisiones')
 @ApiBearerAuth()
@@ -223,6 +227,20 @@ export class RemisionesController {
     return this.service.searchProductos(search);
   }
 
+  @Get('almacenes')
+  @ApiOperation({ summary: 'Ubicaciones/almacenes disponibles, opcionalmente filtrados por sede' })
+  findAlmacenes(@Query('sedeId') sedeId?: string) {
+    return this.service.findAlmacenes(sedeId);
+  }
+
+  @Post('producto-validado/lotes')
+  @ApiOperation({ summary: 'Agregar un lote validado a un producto validado (ValConsumo)' })
+  @ApiCreatedResponse({ description: 'Lote validado creado' })
+  createValConsumoLote(@Body() dto: CreateValConsumoLoteDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string };
+    return this.service.createValConsumoLote(dto, user.sub);
+  }
+
   @Get('notas-credito')
   @ApiOperation({ summary: 'Notas de crédito de una programación (vía Factura → Remisión)' })
   @ApiQuery({ name: 'programacionId', required: true })
@@ -251,10 +269,38 @@ export class RemisionesController {
     return this.service.findDocumentosByProgramacion(programacionId);
   }
 
+  @Post('documentos')
+  @ApiOperation({ summary: 'Agrega un documento (PDF en base64) a una programación' })
+  @ApiCreatedResponse({ description: 'Documento creado' })
+  createDocumentoProgramacion(@Body() dto: CreateDocumentoProgramacionDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string };
+    return this.service.createDocumentoProgramacion(dto, user.sub);
+  }
+
+  @Get('documentos/:id/archivo')
+  @ApiOperation({ summary: 'Descarga el PDF de un documento de programación' })
+  async getDocumentoProgramacionArchivo(@Param('id') id: string, @Res({ passthrough: true }) res: Response) {
+    const { path, nombre } = await this.service.getDocumentoProgramacionArchivo(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${nombre}.pdf"`,
+    });
+    return new StreamableFile(createReadStream(path));
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de una remisión (consumos, técnicos, facturación)' })
   getById(@Param('id') id: string) {
     return this.service.getById(id);
+  }
+
+  @Post(':id/convertir-factura')
+  @SuperAdminOnly()
+  @ApiOperation({ summary: 'Convierte una remisión en factura: crea la Factura, sus líneas (consumos pendientes por facturar) y marca la remisión como enviada a CxC' })
+  @ApiCreatedResponse({ description: 'Factura creada' })
+  convertirEnFactura(@Param('id') id: string, @Req() req: Request) {
+    const user = req['user'] as { sub: string };
+    return this.service.convertirEnFactura(id, user.sub);
   }
 
   @Patch(':id/estado')

@@ -31,6 +31,7 @@ services:
       DATABASE_URL: postgresql://tspine:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     volumes:
       - ./logs:/app/logs
+      - ./uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
