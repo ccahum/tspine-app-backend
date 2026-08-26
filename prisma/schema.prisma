@@ -542,8 +542,52 @@ model Sede {
   movimientosCaja          MovimientoCaja[]
   cotizaciones             Cotizacion[]
   solicitudesProgramacion  SolicitudProgramacion[]
+  vehiculosCatalogo        VehiculoCatalogo[]
+  viajesVehiculo           ViajeVehiculo[]
 
   @@map("sedes")
+}
+
+model VehiculoCatalogo {
+  id         String  @id
+  placas     String?
+  nombre     String?
+  marca      String?
+  modelo     String?
+  fotografia String?
+  kmActual   Int?    @map("km_actual")
+  sedeId     String? @map("sede_id")
+  estado     String?
+
+  sede   Sede?           @relation(fields: [sedeId], references: [id])
+  viajes ViajeVehiculo[]
+
+  @@map("vehiculo_catalogo")
+}
+
+model ViajeVehiculo {
+  id                String    @id
+  marcaTiempo       DateTime? @map("marca_tiempo")
+  conductorId       String?   @map("conductor_id")
+  sedeId            String?   @map("sede_id")
+  vehiculoId        String?   @map("vehiculo_id")
+  kilometrajeActual Int?      @map("kilometraje_actual")
+  sitioOrigen       String?   @map("sitio_origen")
+  sitioDestino      String?   @map("sitio_destino")
+  fotoTablero       String?   @map("foto_tablero")
+  diligencia        String?
+  novedadesEstado   String?   @map("novedades_estado")
+  estadoActual      Boolean?  @map("estado_actual")
+  motivo            String?
+  bajaPorId         String?   @map("baja_por_id")
+  bajaEl            DateTime? @map("baja_el") @db.Date
+
+  conductor   Tercero?          @relation("ViajeVehiculoConductor", fields: [conductorId], references: [id])
+  bajaPor     Tercero?          @relation("ViajeVehiculoBajaPor",   fields: [bajaPorId],   references: [id])
+  vehiculo    VehiculoCatalogo? @relation(                          fields: [vehiculoId],  references: [id])
+  sede        Sede?             @relation(                          fields: [sedeId],      references: [id])
+
+  @@map("viajes_vehiculo")
 }
 
 model Perfil {
@@ -683,6 +727,8 @@ model Tercero {
   solicitudesProgramacionSolicitante SolicitudProgramacion[]      @relation("SolicitudProgramacionSolicitante")
   solicitudesProgramacionRevisor     SolicitudProgramacion[]      @relation("SolicitudProgramacionRevisor")
   solicitudesProgramacionMedico      SolicitudProgramacionMedico[]
+  viajesVehiculoConductor    ViajeVehiculo[] @relation("ViajeVehiculoConductor")
+  viajesVehiculoBajaPor      ViajeVehiculo[] @relation("ViajeVehiculoBajaPor")
   cargo                    Cargo?                   @relation(fields: [cargoId], references: [id])
   ciudad                   Ciudad?                  @relation(fields: [ciudadId], references: [id])
   estado                   Estado?                  @relation(fields: [estadoId], references: [id])
@@ -692,6 +738,7 @@ model Tercero {
   tarifa                   Tarifa?                  @relation(fields: [tarifaId], references: [id])
   notificaciones           Notificacion[]
   totp                     TerceroTotp?
+  contactos                TerceroContacto[]
 
   @@map("terceros")
 }
@@ -725,6 +772,20 @@ model Notificacion {
   usuario Tercero @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@map("notificaciones")
+}
+
+model TerceroContacto {
+  id              String  @id @default(uuid())
+  terceroId       String  @map("tercero_id")
+  tipo            String
+  dato            String
+  personaContacto String? @map("persona_contacto")
+  notas           String?
+  principal       Boolean @default(false)
+
+  tercero Tercero @relation(fields: [terceroId], references: [id], onDelete: Cascade)
+
+  @@map("tercero_contactos")
 }
 
 model TerceroClasificacion {

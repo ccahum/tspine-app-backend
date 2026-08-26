@@ -16,6 +16,9 @@ import { BusquedaGlobalModule } from './api/busqueda-global/busqueda-global.modu
 import { SolicitudProgramacionModule } from './api/operacion/solicitud-programacion/solicitud-programacion.module';
 import { NotificacionesModule } from './api/notificaciones/notificaciones.module';
 import { UsuariosAdminModule } from './api/administracion/usuarios/usuarios-admin.module';
+import { TercerosAdminModule } from './api/administracion/terceros/terceros-admin.module';
+import { VehiculoCatalogoModule } from './api/vehicular/vehiculo-catalogo/vehiculo-catalogo.module';
+import { ViajeVehiculoModule } from './api/vehicular/viaje-vehiculo/viaje-vehiculo.module';
 
 @Module({
   imports: [
@@ -34,6 +37,9 @@ import { UsuariosAdminModule } from './api/administracion/usuarios/usuarios-admi
     SolicitudProgramacionModule,
     NotificacionesModule,
     UsuariosAdminModule,
+    TercerosAdminModule,
+    VehiculoCatalogoModule,
+    ViajeVehiculoModule,
   ],
   providers: [
     {
