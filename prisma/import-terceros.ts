@@ -282,13 +282,35 @@ function parseRegimenFiscalCode(val: string): string | null {
   return `__INVALIDO__:${v}`;
 }
 
+const MESES_ES: Record<string, number> = {
+  ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6,
+  jul: 7, ago: 8, sep: 9, sept: 9, oct: 10, nov: 11, dic: 12,
+};
+
 function parseDate(raw: string): Date | null {
   if (!raw?.trim()) return null;
-  const parts = raw.trim().split('/');
-  if (parts.length !== 3) return null;
-  const [d, m, y] = parts.map(Number);
-  if (!d || !m || !y || y < 1900) return null;
-  return new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  const v = raw.trim();
+
+  const slashParts = v.split('/');
+  if (slashParts.length === 3) {
+    const [d, m, y] = slashParts.map(Number);
+    if (!d || !m || !y || y < 1900) return null;
+    return new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+
+  // Formato "20-oct-1992" (día-mes abreviado en español-año), predominante en la
+  // columna FECHA DE NACIMIENTO exportada de Sheets.
+  const dashMatch = v.match(/^(\d{1,2})-([a-zA-Zñ]+)-(\d{4})$/);
+  if (dashMatch) {
+    const [, dStr, mesStr, yStr] = dashMatch;
+    const d = Number(dStr);
+    const y = Number(yStr);
+    const m = MESES_ES[mesStr.toLowerCase()];
+    if (!d || !m || !y || y < 1900) return null;
+    return new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+
+  return null;
 }
 
 function parseDateTime(raw: string): Date | null {
