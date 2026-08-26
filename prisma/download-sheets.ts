@@ -205,6 +205,11 @@ const SHEETS = [
     sheetName:     'Det_Cotiza',
     fileName:      'SistemaTspine1.0 - Det_Cotiza.csv',
   },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'Vehiculos',
+    fileName:      'SistemaTspine1.0 - Vehiculos.csv',
+  },
   // Para agregar más pestañas de SistemaTspine1.0:
   // { spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o', sheetName: 'NombrePestaña', fileName: 'SistemaTspine1.0 - NombrePestaña.csv' },
 ];

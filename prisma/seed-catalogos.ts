@@ -252,6 +252,32 @@ const PAQUETES_COTIZACION: { id: string; nombre: string; descripcion: string | n
   { id: 'ie14042624', nombre: 'Monitoreo Intraoperatorio con Electromiografía Continua y Estimulada y Potenciales Evocados', descripcion: 'Monitoreo Intraoperatorio con Electromiografía Continua y Estimulada y Potenciales Evocados', estado: 'Activo' },
 ];
 
+type VehiculoCatalogoData = {
+  id: string; placas: string; nombre: string | null; marca: string | null; modelo: string | null;
+  fotografia: string | null; kmActual: number | null; sedeId: string | null; estado: string | null;
+};
+
+// Migrado de la tabla VehiculoCatálogo de AppSheet. La fila con id VR3EF9HP8MJ512629 tenía en la
+// hoja original SEDE="Mérida" y ESTADO="Yucatán" (error de captura) — confirmado con el usuario
+// que se interpreta como Sede Mérida / Estado Activo. Las dos filas con placas YN-3672-F son
+// registros distintos en la fuente original (IDs distintos), se conservan ambas tal cual.
+const VEHICULOS_CATALOGO: VehiculoCatalogoData[] = [
+  { id: 'JW-72-913',           placas: 'JW-72-913', nombre: 'Peugeot Mini GDL',  marca: 'Peugeot',             modelo: 'Partner', fotografia: 'VehiculoCatalogo_Images/JW-72-913.FOTOGRAFIA.122115.jpg',           kmActual: 0,      sedeId: 'sede_guadalajara', estado: 'Activo' },
+  { id: 'JY-00-524',           placas: 'JY-00-524', nombre: 'Peugeot Maxi GDL',  marca: 'Peugeot',             modelo: '2021',     fotografia: 'VehiculoCatalogo_Images/JY-00-524.FOTOGRAFIA.212037.jpg',           kmActual: 0,      sedeId: 'sede_guadalajara', estado: 'Activo' },
+  { id: 'SZ-7885-M',           placas: 'SZ-7885-M', nombre: 'Renault Kangoo',    marca: 'Renault',             modelo: '2022',     fotografia: 'VehiculoCatalogo_Images/SZ-7885-M.FOTOGRAFIA.153122.jpg',           kmActual: 83652,  sedeId: 'sede_cancun',      estado: 'Activo' },
+  { id: 'TA-9605-N',           placas: 'TA-9605-N', nombre: 'Peugeot Maxi',      marca: 'Peugeot Partner HDI', modelo: '2025',     fotografia: 'VehiculoCatalogo_Images/TA-9605-N.FOTOGRAFIA.153520.jpg',           kmActual: 6018,   sedeId: 'sede_cancun',      estado: 'Activo' },
+  { id: 'JY-20-202',           placas: 'JY-20-202', nombre: 'Renault Kangoo GDL',marca: 'Renault',             modelo: 'Kangoo',   fotografia: 'VehiculoCatalogo_Images/JY-20-202.FOTOGRAFIA.173322.jpg',           kmActual: 0,      sedeId: 'sede_guadalajara', estado: 'Activo' },
+  { id: 'YR-7133-E',           placas: 'YR-7133-E', nombre: 'Partner Cancún',    marca: 'Peugeot',             modelo: '2023',     fotografia: 'VehiculoCatalogo_Images/Yr-6888-c.FOTOGRAFIA.131605.jpg',           kmActual: 173475, sedeId: 'sede_cancun',      estado: 'Activo' },
+  { id: 'YZJ-661-G',           placas: 'YZJ-661-G', nombre: 'Rifther',           marca: 'Peugeot',             modelo: null,       fotografia: 'VehiculoCatalogo_Images/ZCG434C.FOTOGRAFIA.173710.jpg',             kmActual: null,   sedeId: 'sede_merida',      estado: 'Activo' },
+  { id: 'YT-5899-E',           placas: 'YT-5899-E', nombre: 'Partner',           marca: 'Peugeot',             modelo: null,       fotografia: 'VehiculoCatalogo_Images/YT-5899-E.FOTOGRAFIA.173510.jpg',           kmActual: 95305,  sedeId: 'sede_merida',      estado: 'Activo' },
+  { id: 'YU-3697-E',           placas: 'YU-3697-E', nombre: 'Partner',           marca: 'Peugeot',             modelo: '2026',     fotografia: null,                                                                 kmActual: null,   sedeId: 'sede_guadalajara', estado: 'Activo' },
+  { id: 'ZAH-758-H',           placas: 'ZAH-758-H', nombre: 'Partner',           marca: 'Peugeot',             modelo: '2026',     fotografia: null,                                                                 kmActual: null,   sedeId: 'sede_merida',      estado: 'Activo' },
+  { id: 'VR3EF9HP8MJ512629',   placas: 'YN-3672-F', nombre: 'Partner Maxi',      marca: 'Peugeot',             modelo: '2021',     fotografia: 'VehiculoCatalogo_Images/VR3EF9HP8MJ512629.FOTOGRAFIA.155538.jpg',   kmActual: 185234, sedeId: 'sede_merida',      estado: 'Activo' },
+  { id: 'JP-9311-B',           placas: 'JP-9311-B', nombre: 'Saveiro Pick Up',   marca: 'Volkswagen',          modelo: '2026',     fotografia: 'VehiculoCatalogo_Images/JP-9311-B.FOTOGRAFIA.183008.jpg',           kmActual: 27,     sedeId: 'sede_guadalajara', estado: 'Activo' },
+  { id: 'YN-3672-F',           placas: 'YN-3672-F', nombre: 'Peugeot maxi',      marca: 'Peugeot',             modelo: null,       fotografia: null,                                                                 kmActual: null,   sedeId: null,               estado: 'Activo' },
+  { id: 'YR-6888-C',           placas: 'YR-6888-C', nombre: 'PARNER',            marca: 'PEUGEOT',             modelo: '2021',     fotografia: null,                                                                 kmActual: null,   sedeId: 'sede_cancun',      estado: 'Activo' },
+];
+
 async function main() {
   console.log('\n[1/6] Sembrando RegimenFiscal...');
   for (const item of REGIMENES_FISCALES) {
@@ -383,7 +409,7 @@ async function main() {
     console.log(`  ✓ ${item.id.padEnd(10)} ${item.descripcion}`);
   }
 
-  console.log('\n[13/14] Sembrando Conceptos...');
+  console.log('\n[13/15] Sembrando Conceptos...');
   for (const item of CONCEPTOS) {
     await prisma.conceptoMovimiento.upsert({
       where:  { id: item.id },
@@ -393,7 +419,7 @@ async function main() {
     console.log(`  ✓ ${item.id}`);
   }
 
-  console.log('\n[14/14] Sembrando PaquetesCotizacion...');
+  console.log('\n[14/15] Sembrando PaquetesCotizacion...');
   for (const item of PAQUETES_COTIZACION) {
     await prisma.paqueteCotizacion.upsert({
       where:  { id: item.id },
@@ -401,6 +427,16 @@ async function main() {
       create: item,
     });
     console.log(`  ✓ ${item.id.padEnd(12)} ${item.nombre}`);
+  }
+
+  console.log('\n[15/15] Sembrando Catálogo Vehicular...');
+  for (const item of VEHICULOS_CATALOGO) {
+    await prisma.vehiculoCatalogo.upsert({
+      where:  { id: item.id },
+      update: { placas: item.placas, nombre: item.nombre, marca: item.marca, modelo: item.modelo, fotografia: item.fotografia, kmActual: item.kmActual, sedeId: item.sedeId, estado: item.estado },
+      create: item,
+    });
+    console.log(`  ✓ ${item.id.padEnd(20)} ${item.nombre}`);
   }
 
   const totalRf  = await prisma.regimenFiscal.count();
@@ -417,7 +453,8 @@ async function main() {
   const totalIsrRet = await prisma.catIsrRet.count();
   const totalConceptos = await prisma.conceptoMovimiento.count();
   const totalPaquetes = await prisma.paqueteCotizacion.count();
-  console.log(`\n✅ ${totalRf} regímenes fiscales, ${totalUc} usos CFDI, ${totalFp} formas de pago, ${totalTar} tarifas, ${totalCat} categorías, ${totalUdm} unidades de medida, ${totalOi} objetos de impuesto, ${totalBan} bancos, ${totalCg} clasificaciones de gasto, ${totalIva} tasas de IVA, ${totalIvaRet} tasas de IVA retenido, ${totalIsrRet} tasas de ISR retenido, ${totalConceptos} conceptos, ${totalPaquetes} paquetes de cotización\n`);
+  const totalVehiculos = await prisma.vehiculoCatalogo.count();
+  console.log(`\n✅ ${totalRf} regímenes fiscales, ${totalUc} usos CFDI, ${totalFp} formas de pago, ${totalTar} tarifas, ${totalCat} categorías, ${totalUdm} unidades de medida, ${totalOi} objetos de impuesto, ${totalBan} bancos, ${totalCg} clasificaciones de gasto, ${totalIva} tasas de IVA, ${totalIvaRet} tasas de IVA retenido, ${totalIsrRet} tasas de ISR retenido, ${totalConceptos} conceptos, ${totalPaquetes} paquetes de cotización, ${totalVehiculos} vehículos del catálogo vehicular\n`);
 }
 
 main()

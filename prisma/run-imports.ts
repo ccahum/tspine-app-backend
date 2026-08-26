@@ -61,6 +61,7 @@ const STEPS = [
   { label: 'Import Detalle Compra',        script: 'import-detallecompra' },        // necesita compras, productos, terceros, cat_iva/iva_ret/isr_ret
   { label: 'Import Entradas por Compra',   script: 'import-entradascompra' },       // necesita detalle_compras, productos, lotes, terceros
   { label: 'Import Abonos',                script: 'import-abonos' },               // necesita terceros, movimientos_caja, facturas, formas_pago, cuentas, bancos
+  { label: 'Import Viajes Vehículo',       script: 'import-viajesvehiculo' },       // necesita terceros, vehiculo_catalogo (seed catálogos)
 ];
 
 type Step   = typeof STEPS[number];
