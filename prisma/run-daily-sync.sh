@@ -22,6 +22,12 @@ set -a
 source .env.imports
 set +a
 
+# El límite de heap que Node detecta solo con la RAM del droplet (~2GB) se queda corto
+# para descargar ~40 Sheets (algunos de varios MB) — mismo ajuste que ya usa el
+# Dockerfile para el build, con un valor más chico para no competir de más con Postgres
+# y el backend, que ya están corriendo.
+export NODE_OPTIONS="--max-old-space-size=1536"
+
 mkdir -p logs/imports
 LOG_FILE="logs/imports/$(date +'%Y-%m-%d_%H-%M-%S').log"
 
