@@ -28,6 +28,12 @@ set +a
 # y el backend, que ya están corriendo.
 export NODE_OPTIONS="--max-old-space-size=1536"
 
+# ts-node por default hace chequeo COMPLETO de tipos en cada arranque — con un schema de
+# Prisma tan grande como el de este proyecto, eso solo puede consumir cientos de MB antes
+# de correr una sola línea del script. TS_NODE_TRANSPILE_ONLY se hereda a todos los
+# procesos hijos (incluidos los ~48 que lanza run-imports.ts, uno por cada import-*.ts).
+export TS_NODE_TRANSPILE_ONLY=true
+
 mkdir -p logs/imports
 LOG_FILE="logs/imports/$(date +'%Y-%m-%d_%H-%M-%S').log"
 
