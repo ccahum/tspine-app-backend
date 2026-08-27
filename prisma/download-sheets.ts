@@ -295,6 +295,17 @@ async function main() {
 
   if (!fs.existsSync(DEST_DIR)) fs.mkdirSync(DEST_DIR, { recursive: true });
 
+  // BATCH_START/BATCH_SIZE permiten procesar solo un tramo de SHEETS en esta invocación.
+  // Se usa para correr el script varias veces (proceso de Node nuevo cada vez) en vez de
+  // una sola corrida larga — en el droplet de QA algo (no está claro qué, parece una fuga
+  // en una dependencia) acumula memoria a lo largo de toda la corrida sin soltarla, sin
+  // importar la concurrencia; reiniciar el proceso entre lotes libera esa memoria de raíz.
+  const batchStart = Number(process.env.DOWNLOAD_BATCH_START) || 0;
+  const batchSize   = Number(process.env.DOWNLOAD_BATCH_SIZE) || SHEETS.length;
+  const batch = SHEETS.slice(batchStart, batchStart + batchSize);
+
+  console.log(`📦 Lote: hojas ${batchStart + 1}-${batchStart + batch.length} de ${SHEETS.length}\n`);
+
   const auth = new google.auth.GoogleAuth({
     keyFile: CREDENTIALS_PATH,
     scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
@@ -305,7 +316,7 @@ async function main() {
 
   // Precarga los metadatos de cada spreadsheet único ANTES de paralelizar,
   // para que las descargas concurrentes no disparen la misma consulta varias veces.
-  const spreadsheetIds = [...new Set(SHEETS.map(s => s.spreadsheetId))];
+  const spreadsheetIds = [...new Set(batch.map(s => s.spreadsheetId))];
   await Promise.all(spreadsheetIds.map(id => getSheetsMeta(sheetsApi, id)));
 
   let exitoso = 0;
@@ -316,7 +327,7 @@ async function main() {
   // pero no revienta el proceso. En una máquina con más RAM se puede subir sin problema.
   const CONCURRENCIA_DESCARGA = Number(process.env.DOWNLOAD_CONCURRENCY) || 2;
 
-  await runWithConcurrency(SHEETS, CONCURRENCIA_DESCARGA, async sheet => {
+  await runWithConcurrency(batch, CONCURRENCIA_DESCARGA, async sheet => {
     try {
       await downloadSheet(authClient, sheetsApi, sheet.spreadsheetId, sheet.sheetName, sheet.fileName);
       console.log(`  ⬇  ${sheet.fileName} ... ✓`);
