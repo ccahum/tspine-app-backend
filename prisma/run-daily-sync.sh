@@ -59,8 +59,8 @@ LOG_FILE="logs/imports/$(date +'%Y-%m-%d_%H-%M-%S').log"
   npx ts-node prisma/run-imports.ts
 
   echo -e "\n  fin: $(date '+%Y-%m-%d %H:%M:%S')"
-) >> "$LOG_FILE" 2>&1
-STATUS=$?
+) 2>&1 | tee -a "$LOG_FILE"
+STATUS=${PIPESTATUS[0]}
 
 if [ $STATUS -ne 0 ]; then
   echo "❌ Sync falló (código $STATUS) — revisa $LOG_FILE" >&2
