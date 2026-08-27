@@ -311,7 +311,12 @@ async function main() {
   let exitoso = 0;
   let fallido = 0;
 
-  await runWithConcurrency(SHEETS, 6, async sheet => {
+  // Concurrencia baja a propósito: en el droplet de QA (~2GB RAM, compartida con Postgres
+  // y el backend) varias hojas grandes descargando a la vez agotan la memoria — más lento,
+  // pero no revienta el proceso. En una máquina con más RAM se puede subir sin problema.
+  const CONCURRENCIA_DESCARGA = Number(process.env.DOWNLOAD_CONCURRENCY) || 2;
+
+  await runWithConcurrency(SHEETS, CONCURRENCIA_DESCARGA, async sheet => {
     try {
       await downloadSheet(authClient, sheetsApi, sheet.spreadsheetId, sheet.sheetName, sheet.fileName);
       console.log(`  ⬇  ${sheet.fileName} ... ✓`);
