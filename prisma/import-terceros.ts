@@ -727,6 +727,10 @@ async function main() {
   // ── PASO 1: Perfiles ────────────────────────────────────────────────────────
   console.log('\n[1/7] Creando perfiles...');
   perfilCache.set('SA', 'SA');
+  // No se gestiona vía REGLA_POR_PERFIL (lo administra el sistema de auth/permisos real),
+  // pero sí necesita existir como fila en la BD para que la FK de Tercero.perfilId no
+  // truene en una base recién truncada. update:{} para no pisar lo que ya haya ahí.
+  await prisma.perfil.upsert({ where: { id: 'SA' }, update: {}, create: { id: 'SA', nombre: 'SA', reglas: 'ALL_CHANGES' } });
   for (const [nombre, reglas] of Object.entries(REGLA_POR_PERFIL)) {
     if (nombre === 'SA') continue;
     const id = slugify(nombre);
