@@ -32,7 +32,10 @@ export NODE_OPTIONS="--max-old-space-size=1536"
 # Prisma tan grande como el de este proyecto, eso solo puede consumir cientos de MB antes
 # de correr una sola línea del script. TS_NODE_TRANSPILE_ONLY se hereda a todos los
 # procesos hijos (incluidos los ~48 que lanza run-imports.ts, uno por cada import-*.ts).
+# Este era el problema real — una vez puesto, correr todo en un solo proceso (sin lotes)
+# y con la concurrencia original de descarga ya no truena por memoria.
 export TS_NODE_TRANSPILE_ONLY=true
+export DOWNLOAD_CONCURRENCY=6
 
 mkdir -p logs/imports
 LOG_FILE="logs/imports/$(date +'%Y-%m-%d_%H-%M-%S').log"
@@ -45,15 +48,8 @@ LOG_FILE="logs/imports/$(date +'%Y-%m-%d_%H-%M-%S').log"
   echo "  SYNC DIARIO DE SHEETS — inicio: $(date '+%Y-%m-%d %H:%M:%S')"
   echo "═══════════════════════════════════════════════════════════"
 
-  echo -e "\n[1/2] Descargando Sheets (por lotes, un proceso de Node nuevo por lote)...\n"
-  BATCH_SIZE=5
-  # Un poco más que el total real de hojas en SHEETS (39 al momento de escribir esto) —
-  # los lotes de más allá del final simplemente no encuentran nada y terminan de inmediato,
-  # así no hay que actualizar este número cada vez que se agregue una hoja nueva.
-  TOTAL_SHEETS_MAX=60
-  for START in $(seq 0 $BATCH_SIZE $((TOTAL_SHEETS_MAX - 1))); do
-    DOWNLOAD_BATCH_START=$START DOWNLOAD_BATCH_SIZE=$BATCH_SIZE npx ts-node prisma/download-sheets.ts
-  done
+  echo -e "\n[1/2] Descargando Sheets...\n"
+  npx ts-node prisma/download-sheets.ts
 
   echo -e "\n[2/2] Corriendo pipeline de imports...\n"
   npx ts-node prisma/run-imports.ts
