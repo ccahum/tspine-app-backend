@@ -12,6 +12,9 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { LoginStepResponseDto } from './dto/login-step-response.dto';
+import { CambiarPasswordInicialDto } from './dto/cambiar-password-inicial.dto';
+import { OlvidePasswordDto } from './dto/olvide-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { PendingTokenDto } from './dto/pending-token.dto';
 import { VerificarCodigoDto } from './dto/verificar-codigo.dto';
@@ -33,6 +36,35 @@ export class AuthController {
   @ApiUnauthorizedResponse({ type: ProblemDetailsResponseDto })
   async login(@Body() dto: LoginDto): Promise<LoginStepResponseDto> {
     return this.authService.login(dto);
+  }
+
+  @Public()
+  @Post('cambiar-password-inicial')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Paso 1.5 (solo si el estado es REQUIERE_CAMBIO_PASSWORD): cambia la contraseña asignada por un admin antes de continuar con el 2FA' })
+  @ApiOkResponse({ type: LoginStepResponseDto })
+  @ApiUnauthorizedResponse({ type: ProblemDetailsResponseDto })
+  async cambiarPasswordInicial(@Body() dto: CambiarPasswordInicialDto): Promise<LoginStepResponseDto> {
+    return this.authService.cambiarPasswordInicial(dto.pendingToken, dto.nuevaPassword);
+  }
+
+  @Public()
+  @Post('olvide-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Envía un link de recuperación por correo si el usuario existe (respuesta siempre genérica)' })
+  async olvidePassword(@Body() dto: OlvidePasswordDto): Promise<{ mensaje: string }> {
+    await this.authService.olvidePassword(dto.usuario);
+    return { mensaje: 'Si el usuario existe, se envió un correo con instrucciones para restablecer la contraseña' };
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Restablece la contraseña usando el token recibido por correo' })
+  @ApiUnauthorizedResponse({ type: ProblemDetailsResponseDto })
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ mensaje: string }> {
+    await this.authService.resetPassword(dto.token, dto.nuevaPassword);
+    return { mensaje: 'Contraseña actualizada correctamente' };
   }
 
   @Public()

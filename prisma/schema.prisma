@@ -637,6 +637,13 @@ model Tercero {
   nombreCompleto       String                    @map("nombre_completo")
   correo               String?
   passwordHash         String?                   @map("password_hash")
+  intentosFallidosLogin Int                      @default(0) @map("intentos_fallidos_login")
+  bloqueadoHasta       DateTime?                 @map("bloqueado_hasta")
+  debeCambiarPassword  Boolean                   @default(false) @map("debe_cambiar_password")
+  resetTokenHash       String?                   @map("reset_token_hash")
+  resetTokenExpira     DateTime?                 @map("reset_token_expira")
+  resetTokenEmitidoEn  DateTime?                 @map("reset_token_emitido_en")
+  notificacionesVistasEn DateTime?               @map("notificaciones_vistas_en")
   perfilId             String?                   @map("perfil_id")
   sedeId               String?                   @map("sede_id")
   activo               Boolean                   @default(true)
@@ -746,10 +753,11 @@ model Tercero {
 // Segundo factor de autenticación (TOTP, RFC 6238) obligatorio para todo usuario del sistema.
 // El secreto se guarda cifrado (AES-256-GCM, ver totp-crypto.util.ts) — nunca en texto plano.
 model TerceroTotp {
-  terceroId String   @id @map("tercero_id")
-  secreto   String
-  activado  Boolean  @default(false)
-  creadoEn  DateTime @default(now()) @map("creado_en")
+  terceroId        String   @id @map("tercero_id")
+  secreto          String
+  activado         Boolean  @default(false)
+  intentosFallidos Int      @default(0) @map("intentos_fallidos")
+  creadoEn         DateTime @default(now()) @map("creado_en")
 
   tercero Tercero @relation(fields: [terceroId], references: [id], onDelete: Cascade)
 
@@ -861,10 +869,6 @@ model Programacion {
   observaciones       String?
   numProgram          String?               @map("num_program")
   avance              Decimal?              @db.Decimal(5, 2)
-  sinRemision         Boolean               @default(false) @map("sin_remision")
-  consumoNoValidado   Boolean               @default(false) @map("consumo_no_validado")
-  sinComision         Boolean               @default(false) @map("sin_comision")
-  cerrada             Boolean               @default(false)
   montoTecnicos       Decimal?              @map("monto_tecnicos") @db.Decimal(15, 2)
   montoInversionistas Decimal?              @map("monto_inversionistas") @db.Decimal(15, 2)
   montoPlus           Decimal?              @map("monto_plus") @db.Decimal(15, 2)
@@ -1142,7 +1146,7 @@ model Producto {
   h0                       Decimal?  @db.Decimal(10, 2)
   h1                       Decimal?  @db.Decimal(10, 2)
   manejaExistencias        Boolean   @default(false) @map("maneja_existencias")
-  udi                      Boolean?
+  udi                      String?
   seReusa                  Boolean   @default(false) @map("se_reusa")
   generaListaPrecios       Boolean   @default(false) @map("genera_lista_precios")
   seCotiza                 Boolean   @default(false) @map("se_cotiza")

@@ -36,8 +36,24 @@ export class NotificacionesService {
     });
   }
 
+  // El badge de la campana cuenta lo no leído creado DESPUÉS de la última vez que el usuario
+  // abrió la campana (en cualquier navegador/dispositivo — se guarda en el usuario, no en
+  // localStorage). Así el punto rojo se limpia al abrir la campana pero no se pierde ese
+  // estado al entrar desde otro navegador; el resaltado de cada notificación individual en la
+  // lista sigue dependiendo solo de `leida`, sin cambios.
   async noLeidasCount(usuarioId: string): Promise<number> {
-    return this.prisma.notificacion.count({ where: { usuarioId, leida: false } });
+    const usuario = await this.prisma.tercero.findUnique({ where: { id: usuarioId }, select: { notificacionesVistasEn: true } });
+    return this.prisma.notificacion.count({
+      where: {
+        usuarioId,
+        leida: false,
+        ...(usuario?.notificacionesVistasEn ? { createdAt: { gt: usuario.notificacionesVistasEn } } : {}),
+      },
+    });
+  }
+
+  async marcarVistas(usuarioId: string): Promise<void> {
+    await this.prisma.tercero.update({ where: { id: usuarioId }, data: { notificacionesVistasEn: new Date() } });
   }
 
   async marcarLeida(id: string, usuarioId: string) {

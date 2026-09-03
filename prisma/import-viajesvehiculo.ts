@@ -52,7 +52,7 @@ function parseDateTime(val: string | undefined): Date | null {
 
 function parseInt10(val: string | undefined): number | null {
   if (!val || val.trim() === '') return null;
-  const num = parseInt(val.trim(), 10);
+  const num = parseInt(val.trim().replace(/,/g, ''), 10);
   return isNaN(num) ? null : num;
 }
 
@@ -187,12 +187,20 @@ async function main() {
   reportNR('Vehículo (placa/ID)', vehiculosNR);
   reportNR('Baja por', bajaPorNR);
 
-  // ── [3/3] Truncar e importar ───────────────────────────────────────────────
-  console.log('\n[3/3] Truncando e importando viajes_vehiculo...');
-  await prisma.viajeVehiculo.deleteMany();
+  // ── [3/3] Upsert (sin truncar) ─────────────────────────────────────────────
+  // Ya NO se trunca: algunos registros ya tienen su foto real recuperada desde Drive
+  // (fotoTablero apunta a "viajes-vehiculo/{id}.jpg" en vez de la ruta legacy
+  // "Vehiculos_Images/..."). Truncar y recrear desde el CSV pisaría esa recuperación
+  // con la ruta rota otra vez. Por eso: upsert por id, y "fotoTablero" solo se toma del
+  // CSV si el registro es nuevo o si todavía tiene la ruta legacy sin recuperar.
+  console.log('\n[3/3] Importando viajes_vehiculo (upsert, preservando fotos ya recuperadas)...');
 
-  let importados = 0;
-  let omitidos   = 0;
+  const existentes = new Map(
+    (await prisma.viajeVehiculo.findMany({ select: { id: true, fotoTablero: true } }))
+      .map(v => [v.id, v.fotoTablero]),
+  );
+
+  let creados = 0, actualizados = 0, omitidos = 0;
   const errores: string[] = [];
 
   for (const row of rows) {
@@ -211,40 +219,49 @@ async function main() {
     const bajaPorRaw = getCol(row, 'Baja por')?.trim();
     const bajaPorId = bajaPorRaw ? (tercerosByNombre.get(norm(bajaPorRaw.toLowerCase())) ?? null) : null;
 
+    const fotoCsv    = getCol(row, 'Foto tablero')?.trim() || null;
+    const fotoActual = existentes.get(id);
+    const yaRecuperada = fotoActual && !fotoActual.startsWith('Vehiculos_Images/');
+    const fotoTablero   = yaRecuperada ? fotoActual : fotoCsv;
+
+    const data = {
+      marcaTiempo:       parseDateTime(getCol(row, 'Marca de tiempo')),
+      conductorId,
+      sedeId,
+      vehiculoId,
+      kilometrajeActual: parseInt10(getCol(row, 'Kilometraje actual')),
+      sitioOrigen:       getCol(row, 'Sitio origen')?.trim()  || null,
+      sitioDestino:      getCol(row, 'Sitio destino')?.trim() || null,
+      fotoTablero,
+      diligencia:        getCol(row, 'Diligencia')?.trim()    || null,
+      novedadesEstado:   getCol(row, 'Novedades sobre estado del vehículo')?.trim() || null,
+      estadoActual:      parseBool(getCol(row, 'Estado actual')),
+      motivo:            getCol(row, 'Motivo')?.trim()   || null,
+      bajaPorId,
+      bajaEl:            parseDateTime(getCol(row, 'Baja el')),
+    };
+
     try {
-      await prisma.viajeVehiculo.create({
-        data: {
-          id,
-          marcaTiempo:       parseDateTime(getCol(row, 'Marca de tiempo')),
-          conductorId,
-          sedeId,
-          vehiculoId,
-          kilometrajeActual: parseInt10(getCol(row, 'Kilometraje actual')),
-          sitioOrigen:       getCol(row, 'Sitio origen')?.trim()  || null,
-          sitioDestino:      getCol(row, 'Sitio destino')?.trim() || null,
-          fotoTablero:       getCol(row, 'Foto tablero')?.trim()  || null,
-          diligencia:        getCol(row, 'Diligencia')?.trim()    || null,
-          novedadesEstado:   getCol(row, 'Novedades sobre estado del vehículo')?.trim() || null,
-          estadoActual:      parseBool(getCol(row, 'Estado actual')),
-          motivo:            getCol(row, 'Motivo')?.trim()   || null,
-          bajaPorId,
-          bajaEl:            parseDateTime(getCol(row, 'Baja el')),
-        },
+      await prisma.viajeVehiculo.upsert({
+        where: { id },
+        create: { id, ...data },
+        update: data,
       });
-      importados++;
-      if (importados % 500 === 0) console.log(`  → ${importados} importados...`);
+      if (existentes.has(id)) actualizados++; else creados++;
+      if ((creados + actualizados) % 500 === 0) console.log(`  → ${creados + actualizados} procesados...`);
     } catch (err: any) {
       errores.push(`${id}: ${err.message}`);
     }
   }
 
-  console.log(`  → Total: ${importados} viajes creados`);
+  console.log(`  → Creados: ${creados}  |  Actualizados: ${actualizados}`);
 
   // ── Resumen ───────────────────────────────────────────────────────────────
   console.log('\n' + '═'.repeat(60));
   console.log('  RESUMEN');
   console.log('═'.repeat(60));
-  console.log(`  ✓ Importados            : ${importados}`);
+  console.log(`  ✓ Creados               : ${creados}`);
+  console.log(`  ✓ Actualizados          : ${actualizados}`);
   console.log(`  ✗ Omitidos (sin ID)     : ${omitidos}`);
   console.log(`  ⚠ IDs duplicados en CSV : ${dupIds.length}`);
   console.log(`  ❌ Errores              : ${errores.length}`);

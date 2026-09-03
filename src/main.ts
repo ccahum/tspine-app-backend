@@ -36,8 +36,8 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   const config = new DocumentBuilder()
-    .setTitle('TSpine API')
-    .setDescription('Sistema TSpine 1.0')
+    .setTitle('Luminar API')
+    .setDescription('Sistema Luminar')
     .setVersion('1.0')
     .addBearerAuth()
     .build();

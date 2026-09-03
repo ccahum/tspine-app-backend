@@ -288,6 +288,14 @@ export class RemisionesController {
     return new StreamableFile(createReadStream(path));
   }
 
+  @Get(':id/firma')
+  @ApiOperation({ summary: 'Descarga la imagen de la firma de una remisión' })
+  async getFirma(@Param('id') id: string, @Res({ passthrough: true }) res: Response) {
+    const { path, mime } = await this.service.getRemisionFirmaArchivo(id);
+    res.set({ 'Content-Type': mime });
+    return new StreamableFile(createReadStream(path));
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de una remisión (consumos, técnicos, facturación)' })
   getById(@Param('id') id: string) {

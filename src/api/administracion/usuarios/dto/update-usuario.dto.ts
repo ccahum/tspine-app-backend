@@ -22,7 +22,9 @@ export class UpdateUsuarioDto {
   @IsBoolean()
   activo?: boolean;
 
-  @ApiPropertyOptional({ description: 'Si se envía, resetea la contraseña del usuario' })
+  // Igual que en create-usuario-desde-tercero.dto: es temporal, el usuario la reemplaza
+  // en su próximo login (debeCambiarPassword se fuerza a true si se envía este campo).
+  @ApiPropertyOptional({ description: 'Si se envía, resetea la contraseña del usuario (temporal — la reemplaza en su próximo login)' })
   @IsOptional()
   @IsString()
   @MinLength(8)

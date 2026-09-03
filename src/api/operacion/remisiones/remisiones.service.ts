@@ -208,6 +208,10 @@ export class RemisionesService {
     return this.repo.getDocumentoProgramacionArchivo(id);
   }
 
+  getRemisionFirmaArchivo(id: string) {
+    return this.repo.getRemisionFirmaArchivo(id);
+  }
+
   getById(id: string) {
     return this.repo.getById(id);
   }

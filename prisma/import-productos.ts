@@ -71,6 +71,13 @@ function parseDecimal(val: string | undefined): number | null {
   return isNaN(num) ? null : num;
 }
 
+/** Igual que parseInt, pero quitando separadores de miles (ej. "1,526.00" -> 1526) */
+function parseIntConComas(val: string | undefined): number | null {
+  if (!val || val.trim() === '') return null;
+  const num = parseInt(val.trim().replace(/,/g, ''));
+  return isNaN(num) ? null : num;
+}
+
 function parseBool(val: string | undefined): boolean | null {
   if (!val || val.trim() === '') return null;
   const v = val.trim().toUpperCase();
@@ -274,7 +281,7 @@ async function main() {
           particulares:            parseDecimal(getCol(row, 'PARTICULARES')),
           hospitales:              parseDecimal(getCol(row, 'HOSPITALES')),
           aseguradora:             parseDecimal(getCol(row, 'ASEGURADORA')),
-          orden:                   parseInt(getCol(row, 'ORDEN') ?? '') || null,
+          orden:                   parseIntConComas(getCol(row, 'ORDEN')),
           imagen:                  getCol(row, 'IMAGEN')?.trim()        || null,
           observaciones:           getCol(row, 'OBSERVACIONES')?.trim() || null,
           marcaId,
@@ -286,11 +293,11 @@ async function main() {
           denegar:                 parseBool(getCol(row, 'DENEGAR')),
           conBaseAId:              null, // segunda pasada
           anosVidaUtil:            parseDecimal(getCol(row, 'ANOS DE VIDA UTIL')),
-          min:                     parseInt(getCol(row, 'MIN') ?? '') || null,
+          min:                     parseIntConComas(getCol(row, 'MIN')),
           h0:                      parseDecimal(getCol(row, 'H0')),
           h1:                      parseDecimal(getCol(row, 'H1')),
           manejaExistencias:       boolDef(getCol(row, 'MANEJA EXISTENCIAS?'),          false),
-          udi:                     parseBool(getCol(row, 'UDI')),
+          udi:                     getCol(row, 'UDI')?.trim()          || null,
           seReusa:                 boolDef(getCol(row, 'SE REUSA?'),                    false),
           generaListaPrecios:      boolDef(getCol(row, 'GENERA LISTA DE PRECIOS?'),     false),
           seCotiza:                boolDef(getCol(row, 'SE COTIZA?'),                   false),

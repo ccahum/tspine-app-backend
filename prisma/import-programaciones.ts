@@ -276,10 +276,6 @@ async function main() {
           cotizacionUrl:       getCol(row, 'COTIZACION')          || null,
           enviarProgramacion:  (() => { const v = parseInt(getCol(row, 'ENVIAR PROGRAMACION')?.trim()); return isNaN(v) ? null : v; })(),
           folioRequisicion:    getCol(row, 'FOLIO REQUISICIÓN')   || null,
-          cerrada:             false,
-          sinRemision:         false,
-          consumoNoValidado:   false,
-          sinComision:         false,
         },
       });
 

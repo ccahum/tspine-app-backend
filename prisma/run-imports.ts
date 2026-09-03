@@ -7,6 +7,10 @@
  *   npx ts-node prisma/run-imports.ts --pause                  → pausa entre cada paso para revisar logs
  *   npx ts-node prisma/run-imports.ts --from=import-productos  → reanuda desde ese paso
  *   npx ts-node prisma/run-imports.ts --only=import-valconsumo → corre solo ese script
+ *   npx ts-node prisma/run-imports.ts --reset                  → pasa --reset a cada script
+ *                                                                  (truncado limpio; hoy solo
+ *                                                                  import-terceros lo soporta,
+ *                                                                  el resto lo ignora)
  *
  * Para agregar un nuevo script, añade una entrada a STEPS en el lugar correcto.
  */
@@ -70,6 +74,7 @@ type Result = { label: string; ok: boolean };
 // ── Args ──────────────────────────────────────────────────────────────────────
 
 const withPause = process.argv.includes('--pause');
+const withReset = process.argv.includes('--reset');
 const fromArg   = process.argv.find(a => a.startsWith('--from='))?.split('=')[1];
 const onlyArg   = process.argv.find(a => a.startsWith('--only='))?.split('=')[1];
 
@@ -83,7 +88,8 @@ function run(label: string, script: string): boolean {
   console.log('─'.repeat(60));
 
   const start  = Date.now();
-  const result = spawnSync('npx', ['ts-node', scriptPath], {
+  const args   = withReset ? ['ts-node', scriptPath, '--reset'] : ['ts-node', scriptPath];
+  const result = spawnSync('npx', args, {
     stdio: 'inherit',   // los logs del script se muestran directo en tu terminal
     shell: true,
     cwd:   PROJECT_ROOT,

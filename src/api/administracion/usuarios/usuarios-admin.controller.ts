@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SuperAdminOnly } from '@app/commons/decorators/super-admin-only.decorator';
 import { UsuariosAdminService } from './usuarios-admin.service';
-import { CreateUsuarioDto } from './dto/create-usuario.dto';
+import { CreateUsuarioDesdeTerceroDto } from './dto/create-usuario-desde-tercero.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
-import { PerfilOptionDto, UsuarioAdminItemDto } from './dto/usuario-admin-response.dto';
+import { PerfilOptionDto, TerceroDisponibleDto, UsuarioAdminItemDto } from './dto/usuario-admin-response.dto';
 
 @ApiTags('Administración - Usuarios')
 @ApiBearerAuth()
@@ -27,11 +27,18 @@ export class UsuariosAdminController {
     return this.service.findPerfiles();
   }
 
-  @Post()
-  @ApiOperation({ summary: 'Crear un usuario nuevo' })
+  @Get('terceros-disponibles')
+  @ApiOperation({ summary: 'Buscar Terceros con clasificación Empleado que aún no tienen cuenta de usuario' })
+  @ApiOkResponse({ type: [TerceroDisponibleDto] })
+  findTercerosDisponibles(@Query('q') q?: string): Promise<TerceroDisponibleDto[]> {
+    return this.service.findTercerosDisponibles(q);
+  }
+
+  @Post('desde-tercero')
+  @ApiOperation({ summary: 'Dar acceso de usuario a un Tercero (Empleado) que ya existe, sin duplicarlo' })
   @ApiOkResponse({ type: UsuarioAdminItemDto })
-  create(@Body() dto: CreateUsuarioDto): Promise<UsuarioAdminItemDto> {
-    return this.service.create(dto);
+  createFromTercero(@Body() dto: CreateUsuarioDesdeTerceroDto): Promise<UsuarioAdminItemDto> {
+    return this.service.createFromTercero(dto);
   }
 
   @Patch(':id')

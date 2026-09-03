@@ -10,5 +10,7 @@ export const Constants = {
   },
   Auth: {
     EMAIL_DOMAIN: 'tecnologiaspine.com',
+    PASSWORD_REGEX: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/,
+    PASSWORD_REGEX_MESSAGE: 'La contraseña debe incluir mayúsculas, minúsculas, un número y un carácter especial',
   },
 };

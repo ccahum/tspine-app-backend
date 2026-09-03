@@ -2,9 +2,9 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { Constants } from '@app/constants/constants';
-import { CreateUsuarioDto } from './dto/create-usuario.dto';
+import { CreateUsuarioDesdeTerceroDto } from './dto/create-usuario-desde-tercero.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
-import { PerfilOptionDto, UsuarioAdminItemDto } from './dto/usuario-admin-response.dto';
+import { PerfilOptionDto, TerceroDisponibleDto, UsuarioAdminItemDto } from './dto/usuario-admin-response.dto';
 
 const SALT_ROUNDS = 10;
 
@@ -66,10 +66,40 @@ export class UsuariosAdminService {
     });
   }
 
-  async create(dto: CreateUsuarioDto): Promise<UsuarioAdminItemDto> {
-    const correo = `${dto.usuario}@${Constants.Auth.EMAIL_DOMAIN}`;
+  // Terceros con clasificación EMPLEADO que todavía no pueden iniciar sesión — lo que define
+  // "ya tiene cuenta" es el passwordHash, no el correo (varios empleados ya tienen un correo
+  // cargado del sistema viejo aunque nunca hayan tenido contraseña en este).
+  async findTercerosDisponibles(q?: string): Promise<TerceroDisponibleDto[]> {
+    const disponibles = await this.prisma.tercero.findMany({
+      where: {
+        passwordHash: null,
+        clasificaciones: { some: { clasificacion: 'EMPLEADO' } },
+        ...(q?.trim() ? { nombreCompleto: { contains: q.trim(), mode: 'insensitive' } } : {}),
+      },
+      select: { id: true, nombreCompleto: true, correo: true },
+      orderBy: { nombreCompleto: 'asc' },
+      take: 20,
+    });
+    return disponibles;
+  }
 
-    const existente = await this.prisma.tercero.findFirst({ where: { correo } });
+  async createFromTercero(dto: CreateUsuarioDesdeTerceroDto): Promise<UsuarioAdminItemDto> {
+    const tercero = await this.prisma.tercero.findUnique({
+      where: { id: dto.terceroId },
+      include: { clasificaciones: true },
+    });
+    if (!tercero) {
+      throw new NotFoundException('El tercero indicado no existe');
+    }
+    if (tercero.passwordHash) {
+      throw new ConflictException('Este tercero ya tiene una cuenta de usuario');
+    }
+    if (!tercero.clasificaciones.some(c => c.clasificacion === 'EMPLEADO')) {
+      throw new BadRequestException('Solo se puede dar acceso a terceros con clasificación Empleado');
+    }
+
+    const correo = `${dto.usuario}@${Constants.Auth.EMAIL_DOMAIN}`;
+    const existente = await this.prisma.tercero.findFirst({ where: { correo, id: { not: dto.terceroId } } });
     if (existente) {
       throw new ConflictException('Ya existe un usuario con ese nombre de usuario');
     }
@@ -81,20 +111,20 @@ export class UsuariosAdminService {
 
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
-    const creado = await this.prisma.tercero.create({
+    const actualizado = await this.prisma.tercero.update({
+      where: { id: dto.terceroId },
       data: {
-        nombreCompleto: dto.nombreCompleto,
         correo,
         passwordHash,
         perfilId: dto.perfilId,
         sedeId: dto.sedeId,
         activo: true,
-        clasificaciones: { create: [{ clasificacion: 'EMPLEADO' }] },
+        debeCambiarPassword: true,
       },
       select: USUARIO_SELECT,
     });
 
-    return this.map(creado);
+    return this.map(actualizado);
   }
 
   async update(id: string, dto: UpdateUsuarioDto): Promise<UsuarioAdminItemDto> {
@@ -113,7 +143,10 @@ export class UsuariosAdminService {
     if (dto.perfilId !== undefined) data.perfilId = dto.perfilId;
     if (dto.sedeId !== undefined) data.sedeId = dto.sedeId;
     if (dto.activo !== undefined) data.activo = dto.activo;
-    if (dto.password) data.passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+    if (dto.password) {
+      data.passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+      data.debeCambiarPassword = true;
+    }
 
     const actualizado = await this.prisma.tercero.update({
       where: { id },

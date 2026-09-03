@@ -10,7 +10,7 @@ import { UpdateRemisionDto } from '@app/api/operacion/remisiones/dto/update-remi
 import { CreateTecnicoSugeridoDto } from '@app/api/operacion/remisiones/dto/create-tecnico-sugerido.dto';
 import { CreateValConsumoLoteDto } from '@app/api/operacion/remisiones/dto/create-val-consumo-lote.dto';
 import { CreateDocumentoProgramacionDto } from '@app/api/operacion/remisiones/dto/create-documento-programacion.dto';
-import { decodeBase64DataUrl, resolveUploadPath, saveUploadFile, uploadFileExists } from '@app/commons/file-storage.utils';
+import { decodeBase64DataUrl, mimeFromExtension, resolveUploadPath, saveUploadFile, uploadFileExists } from '@app/commons/file-storage.utils';
 import { nowMexico } from '@app/commons/date.utils';
 
 const normalizeText = (text: string): string =>
@@ -1317,6 +1317,17 @@ export class RemisionesRepositoryService {
     return { path: resolveUploadPath(documento.documento), nombre: documento.nombre ?? 'documento' };
   }
 
+  async getRemisionFirmaArchivo(id: string) {
+    const remision = await this.prisma.remision.findUnique({
+      where: { id },
+      select: { firma: true },
+    });
+    if (!remision?.firma || !uploadFileExists(remision.firma)) {
+      throw new NotFoundException('Firma no disponible');
+    }
+    return { path: resolveUploadPath(remision.firma), mime: mimeFromExtension(remision.firma) };
+  }
+
   async findGastosByProgramacion(programacionId: string) {
     return this.prisma.gasto.findMany({
       where: { fuenteId: programacionId },
@@ -1573,6 +1584,7 @@ export class RemisionesRepositoryService {
 
     return {
       ...rest,
+      firmaDisponible: uploadFileExists(rest.firma),
       programacion: rest.programacion
         ? { ...rest.programacion, consumoNoValidado: computeConsumoNoValidado(rest.programacion) }
         : null,

@@ -6,8 +6,17 @@
  *         datos_fiscales, tercero_sedes_disponible, tercero_sedes_autorizacion,
  *         acceso_datos, hospitales (terceroId + ciudadId).
  *
- * Incluye truncado limpio, reglas de deduplicación, fuzzy matching de hospitales,
- * mapeos manuales conocidos y logs detallados de cada decisión.
+ * Modo por defecto: sync incremental (upsert) — no borra nada, actualiza lo existente
+ * y agrega lo nuevo. Seguro de correr repetidamente (ej. cron diario) sin perder datos
+ * generados en la app (solicitudes de programación, etc.) que referencian Tercero.
+ *
+ * Uso:
+ *   npx ts-node prisma/import-terceros.ts          → sync incremental (upsert), no destructivo
+ *   npx ts-node prisma/import-terceros.ts --reset   → truncado limpio antes de repoblar
+ *                                                      (usar solo para limpiar datos de prueba/basura)
+ *
+ * Reglas de deduplicación, fuzzy matching de hospitales, mapeos manuales conocidos
+ * y logs detallados de cada decisión.
  */
 import { ClasificacionTercero, PrismaClient, ReglaCrud, TablaProtegida } from '@prisma/client';
 import * as fs from 'fs';
@@ -19,6 +28,7 @@ const prisma = new PrismaClient();
 const CSV_DIR        = path.join(os.homedir(), 'Desktop', 'tspine-csv');
 const CSV_PATH       = path.join(CSV_DIR, 'SistemaTspine1.0 - Terceros.csv');
 const CSV_PROG_PATH  = path.join(CSV_DIR, 'SistemaTspine1.0 - Programacion - Programacion.csv');
+const RESET          = process.argv.includes('--reset');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
@@ -707,22 +717,29 @@ async function main() {
   console.log(`    → ${duplicadosGrupos.length - dupConflicto} grupos idénticos o con mismo ID (merge sin pérdida)`);
   console.log(`    → ${rows.length - totalUnicosEnCsv - filasConflicto} filas omitidas por duplicado exacto`);
 
-  // ── PASO 0: Truncado limpio ─────────────────────────────────────────────────
-  console.log('\n[0/7] Truncando datos anteriores de terceros...');
-  // Eliminar junctions que referencian terceros antes de borrar terceros (FK constraint)
-  const delMed = await prisma.programacionMedico.deleteMany({});
-  const delTec = await prisma.programacionTecnico.deleteMany({});
-  console.log(`  ✓ ${delMed.count} programacion_medicos eliminados`);
-  console.log(`  ✓ ${delTec.count} programacion_tecnicos eliminados`);
-  await prisma.$executeRaw`UPDATE hospitales SET tercero_id = NULL`;
-  await prisma.accesoDato.deleteMany({});
-  await prisma.terceroSedeDisponible.deleteMany({});
-  await prisma.terceroSedeAutorizacion.deleteMany({});
-  await prisma.terceroClasificacion.deleteMany({});
-  await prisma.datosFiscales.deleteMany({});
-  const deletedTerceros = await prisma.tercero.deleteMany({});
-  console.log(`  ✓ ${deletedTerceros.count} terceros eliminados`);
-  console.log(`  ✓ Tablas relacionadas limpiadas`);
+  // ── PASO 0: Truncado limpio (solo con --reset) ──────────────────────────────
+  if (RESET) {
+    console.log('\n[0/7] --reset: truncando datos anteriores de terceros...');
+    // Eliminar junctions que referencian terceros antes de borrar terceros (FK constraint)
+    const delMed = await prisma.programacionMedico.deleteMany({});
+    const delTec = await prisma.programacionTecnico.deleteMany({});
+    console.log(`  ✓ ${delMed.count} programacion_medicos eliminados`);
+    console.log(`  ✓ ${delTec.count} programacion_tecnicos eliminados`);
+    await prisma.$executeRaw`UPDATE hospitales SET tercero_id = NULL`;
+    await prisma.accesoDato.deleteMany({});
+    await prisma.terceroSedeDisponible.deleteMany({});
+    await prisma.terceroSedeAutorizacion.deleteMany({});
+    await prisma.terceroClasificacion.deleteMany({});
+    await prisma.datosFiscales.deleteMany({});
+    // NOTA: solicitud_programacion / solicitud_programacion_medicos referencian Tercero
+    // sin cascade — si tienen filas, este deleteMany truena a propósito (P2003) en vez
+    // de borrar en silencio datos generados por la app. Resolver manualmente antes de --reset.
+    const deletedTerceros = await prisma.tercero.deleteMany({});
+    console.log(`  ✓ ${deletedTerceros.count} terceros eliminados`);
+    console.log(`  ✓ Tablas relacionadas limpiadas`);
+  } else {
+    console.log('\n[0/7] Sync incremental — sin truncado (usa --reset para limpiar todo)');
+  }
 
   // ── PASO 1: Perfiles ────────────────────────────────────────────────────────
   console.log('\n[1/7] Creando perfiles...');

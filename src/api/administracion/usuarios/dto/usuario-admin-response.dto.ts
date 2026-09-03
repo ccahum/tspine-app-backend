@@ -16,3 +16,10 @@ export class PerfilOptionDto {
   @ApiProperty() id: string;
   @ApiProperty() nombre: string;
 }
+
+export class TerceroDisponibleDto {
+  @ApiProperty() id: string;
+  @ApiProperty() nombreCompleto: string;
+  @ApiProperty({ nullable: true, description: 'Correo cargado del sistema viejo, si tiene — se usa solo para sugerir el usuario, no se conserva tal cual' })
+  correo: string | null;
+}

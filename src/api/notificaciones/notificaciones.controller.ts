@@ -25,6 +25,14 @@ export class NotificacionesController {
     return { count };
   }
 
+  @Patch('marcar-vistas')
+  @ApiOperation({ summary: 'Registra que el usuario acaba de abrir la campana — limpia el badge de no-leídas en cualquier navegador/dispositivo' })
+  async marcarVistas(@Req() req: Request) {
+    const user = req['user'] as { sub: string };
+    await this.notificacionesService.marcarVistas(user.sub);
+    return {};
+  }
+
   @Patch('leer-todas')
   @ApiOperation({ summary: 'Marca todas las notificaciones del usuario actual como leídas' })
   marcarTodasLeidas(@Req() req: Request) {

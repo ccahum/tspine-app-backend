@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
+import { MailerModule } from './commons/mailer/mailer.module';
 import { AuthorizationModule } from './commons/authorization/authorization.module';
 import { JwtAuthGuard } from './commons/authorization/guards/jwt-auth.guard';
 import { AuthModule } from './api/auth/auth.module';
@@ -24,6 +25,7 @@ import { ViajeVehiculoModule } from './api/vehicular/viaje-vehiculo/viaje-vehicu
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    MailerModule,
     AuthorizationModule,
     AuthModule,
     ProgramacionesModule,

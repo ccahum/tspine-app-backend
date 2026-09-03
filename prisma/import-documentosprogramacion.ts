@@ -133,12 +133,21 @@ async function main() {
     if (cargadoPorNR.size > 10) console.log(`    ... y ${cargadoPorNR.size - 10} más`);
   }
 
-  // ── [3/3] Truncar e importar ───────────────────────────────────────────────
-  console.log('\n[3/3] Truncando e importando documentos_programacion...');
-  await prisma.documentoProgramacion.deleteMany();
+  // ── [3/3] Upsert (sin truncar) ─────────────────────────────────────────────
+  // Ya NO se trunca la tabla: algunos registros ya tienen su archivo real recuperado
+  // desde Drive (documento apunta a "documentos-programacion/{id}.pdf" en vez de la ruta
+  // legacy "DocumentosProgramacion_Files_/..."). Truncar y recrear desde el CSV pisaría
+  // esa recuperación con la ruta rota otra vez. Por eso: upsert por id, y el campo
+  // "documento" solo se toma del CSV si el registro es nuevo o si todavía tiene la ruta
+  // legacy sin recuperar — si ya fue recuperado, se conserva tal cual.
+  console.log('\n[3/3] Importando documentos_programacion (upsert, preservando archivos ya recuperados)...');
 
-  let importados = 0;
-  let omitidos   = 0;
+  const existentes = new Map(
+    (await prisma.documentoProgramacion.findMany({ select: { id: true, documento: true } }))
+      .map(d => [d.id, d.documento]),
+  );
+
+  let creados = 0, actualizados = 0, omitidos = 0;
   const errores: string[] = [];
 
   for (const row of rows) {
@@ -153,31 +162,45 @@ async function main() {
       ? (tercerosByNombre.get(norm(cargadoPorRaw.toLowerCase())) ?? null)
       : null;
 
+    const documentoCsv    = getCol(row, 'Documento')?.trim() || null;
+    const documentoActual = existentes.get(id);
+    const yaRecuperado     = documentoActual && !documentoActual.startsWith('DocumentosProgramacion_Files_/');
+    const documento        = yaRecuperado ? documentoActual : documentoCsv;
+
     try {
-      await prisma.documentoProgramacion.create({
-        data: {
+      await prisma.documentoProgramacion.upsert({
+        where: { id },
+        create: {
           id,
           programacionId,
-          nombre:    getCol(row, 'Nombre')?.trim()    || null,
-          documento: getCol(row, 'Documento')?.trim() || null,
+          nombre: getCol(row, 'Nombre')?.trim() || null,
+          documento,
+          cargadoEl: parseDateTime(getCol(row, 'Cargado el')),
+          cargadoPorId,
+        },
+        update: {
+          programacionId,
+          nombre: getCol(row, 'Nombre')?.trim() || null,
+          documento,
           cargadoEl: parseDateTime(getCol(row, 'Cargado el')),
           cargadoPorId,
         },
       });
-      importados++;
-      if (importados % 500 === 0) console.log(`  → ${importados} importados...`);
+      if (existentes.has(id)) actualizados++; else creados++;
+      if ((creados + actualizados) % 500 === 0) console.log(`  → ${creados + actualizados} procesados...`);
     } catch (err: any) {
       errores.push(`${id}: ${err.message}`);
     }
   }
 
-  console.log(`  → Total: ${importados} documentos creados`);
+  console.log(`  → Creados: ${creados}  |  Actualizados: ${actualizados}`);
 
   // ── Resumen ───────────────────────────────────────────────────────────────
   console.log('\n' + '═'.repeat(60));
   console.log('  RESUMEN');
   console.log('═'.repeat(60));
-  console.log(`  ✓ Importados            : ${importados}`);
+  console.log(`  ✓ Creados               : ${creados}`);
+  console.log(`  ✓ Actualizados          : ${actualizados}`);
   console.log(`  ✗ Omitidos (sin ID)     : ${omitidos}`);
   console.log(`  ⚠ IDs duplicados en CSV : ${dupIds.length}`);
   console.log(`  ❌ Errores              : ${errores.length}`);

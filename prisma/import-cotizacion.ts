@@ -38,7 +38,14 @@ function buildColIndex(header: Record<string, string>) {
 }
 
 function norm(name: string): string {
-  return name.trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const NBSP = String.fromCharCode(160);
+  return name
+    .split(NBSP).join(' ')  // espacio de no separacion (comun al copiar de Sheets/Word) -> espacio normal
+    .trim()
+    .split(' ').filter(Boolean).join(' ')  // colapsa espacios dobles/multiples
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
 }
 
 function getCol(row: Record<string, string>, name: string): string | undefined {
