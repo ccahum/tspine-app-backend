@@ -267,6 +267,18 @@ export class CotizacionesService {
     });
   }
 
+  // Para autocompletar el campo Tarifa: si el Tercero (hospital/responsable económico) tiene
+  // tarifa propia asignada (Tercero.tarifaId) se usa esa; si no, el formulario cae de vuelta al
+  // cubrimiento general (mismo id que Tarifa.id de nivel superior, ver dto.tarifaId ?? dto.cubrimientoId
+  // en createCotizacion).
+  async getTerceroTarifa(terceroId: string) {
+    const tercero = await this.prisma.tercero.findUnique({
+      where: { id: terceroId },
+      select: { tarifaId: true, tarifa: { select: { nombre: true } } },
+    });
+    return { tarifaId: tercero?.tarifaId ?? null, tarifaNombre: tercero?.tarifa?.nombre ?? null };
+  }
+
   async getTarifas() {
     return this.prisma.tarifa.findMany({
       select: { id: true, nombre: true },

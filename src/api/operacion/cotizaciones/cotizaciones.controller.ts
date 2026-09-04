@@ -46,6 +46,12 @@ export class CotizacionesController {
     return this.service.getTarifas();
   }
 
+  @Get('tercero-tarifa/:id')
+  @ApiOperation({ summary: 'Tarifa propia de un Tercero (ej. hospital), si tiene una asignada — para autocompletar el campo Tarifa' })
+  getTerceroTarifa(@Param('id') id: string) {
+    return this.service.getTerceroTarifa(id);
+  }
+
   @Get('paquetes')
   @ApiOperation({ summary: 'Listado de paquetes de cotización, para el campo Paquete' })
   getPaquetes() {
