@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { CotizacionQueryDto } from './dto/cotizacion-query.dto';
 import { CreateDetCotizaDto } from './dto/create-det-cotiza.dto';
@@ -256,15 +257,25 @@ export class CotizacionesService {
   }
 
   async searchTerceros(search?: string, clasificacion?: string) {
-    return this.prisma.tercero.findMany({
-      where: {
-        ...(search?.trim() ? { nombreCompleto: { contains: search, mode: 'insensitive' as const } } : {}),
-        ...(clasificacion ? { clasificaciones: { some: { clasificacion: clasificacion as any } } } : {}),
-      },
-      select: { id: true, nombreCompleto: true },
-      orderBy: { nombreCompleto: 'asc' },
-      take: 20,
-    });
+    const searchTerm = search?.trim();
+    // Prisma no soporta un equivalente a unaccent() con el query builder normal — se usa SQL
+    // crudo para que "Garcia" también encuentre "García" (antes solo hacía match exacto de acentos).
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND unaccent(t.nombre_completo) ILIKE unaccent(${'%' + searchTerm + '%'})`
+      : Prisma.empty;
+    const clasificacionFilter = clasificacion
+      ? Prisma.sql`AND EXISTS (SELECT 1 FROM tercero_clasificaciones tc WHERE tc.tercero_id = t.id AND tc.clasificacion = ${clasificacion}::"ClasificacionTercero")`
+      : Prisma.empty;
+
+    return this.prisma.$queryRaw<{ id: string; nombreCompleto: string }[]>`
+      SELECT t.id, t.nombre_completo AS "nombreCompleto"
+      FROM terceros t
+      WHERE true
+      ${searchFilter}
+      ${clasificacionFilter}
+      ORDER BY t.nombre_completo ASC
+      LIMIT 20
+    `;
   }
 
   // Para autocompletar el campo Tarifa: si el Tercero (hospital/responsable económico) tiene
