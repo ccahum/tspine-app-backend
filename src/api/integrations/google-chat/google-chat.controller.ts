@@ -1,4 +1,5 @@
 import { createReadStream, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { Body, Controller, Get, Param, Post, Req, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -43,6 +44,19 @@ export class GoogleChatController {
   @ApiOperation({ summary: 'Recibe eventos de Google Chat (requerido por la configuración de la app; no se procesan)' })
   handleEvent(@Body() _body: unknown) {
     return {};
+  }
+
+  // Público a propósito: el ícono del header de la card de Chat lo pide el servidor de Google al
+  // renderizar la tarjeta, sin credenciales — antes se armaba como `${FRONTEND_URL}/favicon.png`,
+  // pero en QA el frontend está detrás de basicauth (401 para Google) y en local es localhost (no
+  // alcanzable desde internet). Se sirve desde acá porque esta ruta ya es pública a nivel de
+  // aplicación, sin tener que tocar el candado que protege el resto del frontend de QA.
+  @Public()
+  @Get('icon')
+  @ApiOperation({ summary: 'Ícono usado en el header de las cards de Google Chat (sin autenticación, lo pide Google directamente)' })
+  getIcon(@Res({ passthrough: true }) res: Response): StreamableFile {
+    res.set({ 'Content-Type': 'image/png' });
+    return new StreamableFile(createReadStream(join(__dirname, 'assets', 'icon.png')));
   }
 
   @Post('send-programacion')

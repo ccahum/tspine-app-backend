@@ -150,9 +150,9 @@ export class GoogleChatService {
           cardId: `programacion-${programacion.id}`,
           card: {
             header: {
-              title: `Programación ${numProgramLabel}`,
-              subtitle: 'Anexo de información',
-              imageUrl: `${frontendUrl}/favicon.png`,
+              title: 'Programación',
+              subtitle: `${numProgramLabel}`,
+              imageUrl: `${backendUrl}/integraciones/google-chat/icon`,
               imageType: 'SQUARE',
               imageAltText: 'Luminar',
             },
