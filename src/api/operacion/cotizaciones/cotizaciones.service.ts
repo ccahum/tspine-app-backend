@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
+import { nowMexico } from '@app/commons/date.utils';
 import { CotizacionQueryDto } from './dto/cotizacion-query.dto';
 import { CreateDetCotizaDto } from './dto/create-det-cotiza.dto';
 import { UpdateDetCotizaDto } from './dto/update-det-cotiza.dto';
@@ -111,6 +112,7 @@ export class CotizacionesService {
         nota: true,
         imagen: true,
         empresaId: true,
+        sedeId: true,
         paqueteId: true,
         paquete: { select: { nombre: true } },
         contadorPaquetes: true,
@@ -155,6 +157,7 @@ export class CotizacionesService {
       hospital: c.hospital?.nombreCompleto ?? null,
       empresaId: c.empresaId,
       empresa: c.empresa?.nombreCompleto ?? null,
+      sedeId: c.sedeId,
       sede: c.sede?.nombre ?? null,
       cubrimientoId: c.cubrimientoId,
       cubrimiento: c.cubrimiento?.nombre ?? null,
@@ -199,7 +202,7 @@ export class CotizacionesService {
         id,
         numCotizacion: id,
         usuarioId,
-        marcaDeTiempo: new Date(),
+        marcaDeTiempo: nowMexico(),
         fecha: new Date(dto.fecha),
         dirigidoA: dto.dirigidoA,
         medico: dto.medico,
@@ -208,12 +211,13 @@ export class CotizacionesService {
         cubrimientoId: dto.cubrimientoId,
         empresaId: dto.empresaId,
         responsableEconomicoId: dto.responsableEconomicoId,
+        sedeId: dto.sedeId,
         numProveedor: dto.numProveedor,
         tarifaId: dto.tarifaId ?? dto.cubrimientoId,
         tiempoEntrega: dto.tiempoEntrega,
         observaciones: dto.observaciones,
-        paqueteId: dto.paqueteId,
-        nivel: dto.nivel,
+        paqueteId: dto.paqueteId || null,
+        nivel: dto.nivel || null,
         tieneDcto: dto.tieneDcto ?? false,
         porcentajeDcto: dto.porcentajeDcto,
         impuestos: dto.impuestos,
@@ -236,6 +240,7 @@ export class CotizacionesService {
     if (dto.cubrimientoId !== undefined) data.cubrimientoId = dto.cubrimientoId || null;
     if (dto.empresaId !== undefined) data.empresaId = dto.empresaId || null;
     if (dto.responsableEconomicoId !== undefined) data.responsableEconomicoId = dto.responsableEconomicoId || null;
+    if (dto.sedeId !== undefined) data.sedeId = dto.sedeId || null;
     if (dto.numProveedor !== undefined) data.numProveedor = dto.numProveedor;
     if (dto.tarifaId !== undefined) data.tarifaId = dto.tarifaId || null;
     if (dto.tiempoEntrega !== undefined) data.tiempoEntrega = dto.tiempoEntrega;
@@ -297,6 +302,13 @@ export class CotizacionesService {
     });
   }
 
+  async getSedes() {
+    return this.prisma.sede.findMany({
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' },
+    });
+  }
+
   async getPaquetes() {
     return this.prisma.paqueteCotizacion.findMany({
       select: { id: true, nombre: true },
@@ -304,28 +316,109 @@ export class CotizacionesService {
     });
   }
 
-  async searchProductos(search?: string, cotizacionId?: string) {
-    const productos = await this.prisma.producto.findMany({
-      where: search?.trim() ? { nombre: { contains: search, mode: 'insensitive' as const } } : {},
-      select: { id: true, nombre: true, referencia: true },
+  // Consumos (productos + cantidad) definidos para un paquete según el nivel elegido (1 a 6, cada
+  // uno es una columna propia en detalle_paquetes). Solo se devuelven los productos cuya cantidad
+  // para ese nivel es mayor a 0 — un producto puede no aplicar en niveles bajos. El precio sugerido
+  // sale de la lista de precios de la tarifa, igual que en searchProductos.
+  async getPaqueteConsumos(paqueteId: string, nivel: string, tarifaId?: string) {
+    const match = nivel?.match(/(\d+)/);
+    const n = match ? Number(match[1]) : NaN;
+    if (!n || n < 1 || n > 6) {
+      throw new BadRequestException('Nivel inválido, debe ser "Nivel 1" a "Nivel 6"');
+    }
+    const nivelField = `nivel${n}` as 'nivel1' | 'nivel2' | 'nivel3' | 'nivel4' | 'nivel5' | 'nivel6';
+
+    const detalles = await this.prisma.detallePaquete.findMany({
+      where: { paqueteId },
+      select: {
+        productoId: true,
+        nivel1: true,
+        nivel2: true,
+        nivel3: true,
+        nivel4: true,
+        nivel5: true,
+        nivel6: true,
+        producto: { select: { nombre: true, referencia: true, sistema: { select: { sistema: true } } } },
+      },
+    });
+
+    const conCantidad = detalles
+      .filter(d => d.productoId && (d[nivelField] ?? 0) > 0)
+      .map(d => ({
+        id: d.productoId as string,
+        nombre: d.producto?.nombre ?? null,
+        referencia: d.producto?.referencia ?? null,
+        sistema: d.producto?.sistema?.sistema ?? null,
+        cantidad: d[nivelField] as number,
+      }));
+
+    if (conCantidad.length === 0) return [];
+
+    if (!tarifaId) {
+      return conCantidad.map(p => ({ ...p, precioSugerido: null as number | null }));
+    }
+
+    const listasPrecio = await this.prisma.listaPrecio.findMany({
+      where: { subtarifaId: tarifaId, productoId: { in: conCantidad.map(p => p.id) } },
+      select: { productoId: true, precio: true },
+    });
+    const precioPorProducto = new Map(listasPrecio.map(lp => [lp.productoId, lp.precio]));
+
+    return conCantidad.map(p => ({ ...p, precioSugerido: precioPorProducto.get(p.id) ?? null }));
+  }
+
+  // Precio de una lista de productos según una tarifa — se usa en el formulario de Nueva Cotización
+  // para recalcular los consumos que el usuario ya armó en memoria cuando cambia la tarifa (Cubrimiento
+  // o Responsable Económico), igual que recalcularPrecios hace para una cotización ya guardada.
+  async getPreciosPorProductos(productoIds: string[], tarifaId: string) {
+    if (productoIds.length === 0) return [];
+    const listasPrecio = await this.prisma.listaPrecio.findMany({
+      where: { subtarifaId: tarifaId, productoId: { in: productoIds } },
+      select: { productoId: true, precio: true },
+    });
+    const precioPorProducto = new Map(listasPrecio.map(lp => [lp.productoId, lp.precio]));
+    return productoIds.map(id => ({ productoId: id, precio: precioPorProducto.get(id) ?? null }));
+  }
+
+  // tarifaId se usa cuando todavía no existe la cotización (se está creando) y ya se conoce la
+  // tarifa elegida en el formulario; cotizacionId se usa para una cotización ya guardada. Si se
+  // pasan ambos, tarifaId gana (evita un round-trip extra a buscar la cotización).
+  async searchProductos(search?: string, cotizacionId?: string, tarifaId?: string) {
+    const searchTerm = search?.trim();
+    const productosRaw = await this.prisma.producto.findMany({
+      where: searchTerm
+        ? {
+            OR: [
+              { nombre: { contains: searchTerm, mode: 'insensitive' as const } },
+              { referencia: { contains: searchTerm, mode: 'insensitive' as const } },
+              { sistema: { sistema: { contains: searchTerm, mode: 'insensitive' as const } } },
+            ],
+          }
+        : {},
+      select: { id: true, nombre: true, referencia: true, sistema: { select: { sistema: true } } },
       orderBy: { nombre: 'asc' },
       take: 20,
     });
+    const productos = productosRaw.map(p => ({ id: p.id, nombre: p.nombre, referencia: p.referencia, sistema: p.sistema?.sistema ?? null }));
 
-    if (!cotizacionId || productos.length === 0) {
+    if (productos.length === 0) {
       return productos.map(p => ({ ...p, precioSugerido: null as number | null }));
     }
 
-    const cotizacion = await this.prisma.cotizacion.findUnique({
-      where: { id: cotizacionId },
-      select: { tarifaId: true },
-    });
-    if (!cotizacion?.tarifaId) {
+    let subtarifaId = tarifaId;
+    if (!subtarifaId && cotizacionId) {
+      const cotizacion = await this.prisma.cotizacion.findUnique({
+        where: { id: cotizacionId },
+        select: { tarifaId: true },
+      });
+      subtarifaId = cotizacion?.tarifaId ?? undefined;
+    }
+    if (!subtarifaId) {
       return productos.map(p => ({ ...p, precioSugerido: null as number | null }));
     }
 
     const listasPrecio = await this.prisma.listaPrecio.findMany({
-      where: { subtarifaId: cotizacion.tarifaId, productoId: { in: productos.map(p => p.id) } },
+      where: { subtarifaId, productoId: { in: productos.map(p => p.id) } },
       select: { productoId: true, precio: true },
     });
     const precioPorProducto = new Map(listasPrecio.map(lp => [lp.productoId, lp.precio]));
@@ -355,7 +448,7 @@ export class CotizacionesService {
       data: {
         id,
         cotizacionId,
-        marcaDeTiempo: new Date(),
+        marcaDeTiempo: nowMexico(),
         hospitalId: cotizacion.hospitalId,
         referencia: producto?.referencia ?? null,
         productoId: dto.productoId,
@@ -393,6 +486,46 @@ export class CotizacionesService {
   async deleteItem(itemId: string) {
     await this.prisma.detCotiza.delete({ where: { id: itemId } });
     return { success: true };
+  }
+
+  // Cuando en edición cambia el Cubrimiento o el Responsable Económico (y por lo tanto la tarifa
+  // resuelta), los consumos ya agregados deben reflejar el precio de la nueva tarifa. Los productos
+  // que no tengan precio en la nueva tarifa se dejan con su valor anterior (se cuentan en "omitidos"
+  // para que el frontend pueda avisar que deben revisarse manualmente).
+  async recalcularPrecios(cotizacionId: string, tarifaId: string) {
+    const items = await this.prisma.detCotiza.findMany({
+      where: { cotizacionId },
+      select: { id: true, productoId: true, cantidad: true },
+    });
+    if (items.length === 0) return { actualizados: 0, omitidos: 0 };
+
+    const productoIds = items.map(i => i.productoId).filter((id): id is string => id !== null);
+    const listasPrecio = productoIds.length
+      ? await this.prisma.listaPrecio.findMany({
+          where: { subtarifaId: tarifaId, productoId: { in: productoIds } },
+          select: { productoId: true, precio: true },
+        })
+      : [];
+    const precioPorProducto = new Map(listasPrecio.map(lp => [lp.productoId, lp.precio]));
+
+    const itemsConPrecio = items
+      .map(item => ({ item, precio: item.productoId ? precioPorProducto.get(item.productoId) : undefined }))
+      .filter((x): x is { item: (typeof items)[number]; precio: Prisma.Decimal } =>
+        x.precio !== undefined && x.precio !== null && x.item.cantidad !== null,
+      );
+
+    if (itemsConPrecio.length > 0) {
+      await this.prisma.$transaction(
+        itemsConPrecio.map(({ item, precio }) =>
+          this.prisma.detCotiza.update({
+            where: { id: item.id },
+            data: { valorUnitario: precio, valor: Number(item.cantidad) * Number(precio) },
+          }),
+        ),
+      );
+    }
+
+    return { actualizados: itemsConPrecio.length, omitidos: items.length - itemsConPrecio.length };
   }
 
   private async generateId(): Promise<string> {

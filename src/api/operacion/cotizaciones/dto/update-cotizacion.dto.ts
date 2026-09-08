@@ -37,6 +37,10 @@ export class UpdateCotizacionDto {
 
   @ApiPropertyOptional()
   @IsOptional() @IsString()
+  sedeId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString()
   numProveedor?: string;
 
   @ApiPropertyOptional()

@@ -35,6 +35,10 @@ export class CreateCotizacionDto {
   @IsString()
   responsableEconomicoId!: string;
 
+  @ApiProperty({ description: 'ID de la Sede — por defecto la del perfil del usuario que crea la cotización, pero puede cambiarse' })
+  @IsString()
+  sedeId!: string;
+
   @ApiPropertyOptional()
   @IsOptional() @IsString()
   numProveedor?: string;

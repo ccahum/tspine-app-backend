@@ -7,6 +7,8 @@ import { CreateDetCotizaDto } from './dto/create-det-cotiza.dto';
 import { UpdateDetCotizaDto } from './dto/update-det-cotiza.dto';
 import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
 import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
+import { RecalcularPreciosDto } from './dto/recalcular-precios.dto';
+import { PreciosPorProductosDto } from './dto/precios-por-productos.dto';
 
 @ApiTags('Operación - Cotizaciones')
 @ApiBearerAuth()
@@ -29,9 +31,9 @@ export class CotizacionesController {
   }
 
   @Get('productos')
-  @ApiOperation({ summary: 'Buscar Productos por nombre, para agregar un ítem a una cotización (incluye precio sugerido según la tarifa de la cotización)' })
-  searchProductos(@Query('search') search?: string, @Query('cotizacionId') cotizacionId?: string) {
-    return this.service.searchProductos(search, cotizacionId);
+  @ApiOperation({ summary: 'Buscar Productos por nombre, para agregar un ítem a una cotización (incluye precio sugerido según la tarifa de la cotización, o de tarifaId si aún no existe la cotización)' })
+  searchProductos(@Query('search') search?: string, @Query('cotizacionId') cotizacionId?: string, @Query('tarifaId') tarifaId?: string) {
+    return this.service.searchProductos(search, cotizacionId, tarifaId);
   }
 
   @Get('terceros')
@@ -46,6 +48,12 @@ export class CotizacionesController {
     return this.service.getTarifas();
   }
 
+  @Get('sedes')
+  @ApiOperation({ summary: 'Listado de sedes, para el campo Sede' })
+  getSedes() {
+    return this.service.getSedes();
+  }
+
   @Get('tercero-tarifa/:id')
   @ApiOperation({ summary: 'Tarifa propia de un Tercero (ej. hospital), si tiene una asignada — para autocompletar el campo Tarifa' })
   getTerceroTarifa(@Param('id') id: string) {
@@ -56,6 +64,18 @@ export class CotizacionesController {
   @ApiOperation({ summary: 'Listado de paquetes de cotización, para el campo Paquete' })
   getPaquetes() {
     return this.service.getPaquetes();
+  }
+
+  @Get('paquetes/:paqueteId/consumos')
+  @ApiOperation({ summary: 'Productos y cantidades definidos en un paquete para el nivel indicado (1 a 6), con precio sugerido según tarifa' })
+  getPaqueteConsumos(@Param('paqueteId') paqueteId: string, @Query('nivel') nivel: string, @Query('tarifaId') tarifaId?: string) {
+    return this.service.getPaqueteConsumos(paqueteId, nivel, tarifaId);
+  }
+
+  @Post('productos/precios')
+  @ApiOperation({ summary: 'Precio de una lista de productos según una tarifa — para recalcular los consumos armados en memoria en Nueva Cotización cuando cambia la tarifa' })
+  getPreciosPorProductos(@Body() dto: PreciosPorProductosDto) {
+    return this.service.getPreciosPorProductos(dto.productoIds, dto.tarifaId);
   }
 
   @Patch('items/:itemId')
@@ -80,6 +100,12 @@ export class CotizacionesController {
   @ApiOperation({ summary: 'Editar una cotización' })
   updateCotizacion(@Param('id') id: string, @Body() dto: UpdateCotizacionDto) {
     return this.service.updateCotizacion(id, dto);
+  }
+
+  @Patch(':id/recalcular-precios')
+  @ApiOperation({ summary: 'Recalcular el valor unitario/valor de los ítems ya agregados según la lista de precios de una nueva tarifa (ej. al cambiar el Cubrimiento o Responsable Económico en edición)' })
+  recalcularPrecios(@Param('id') id: string, @Body() dto: RecalcularPreciosDto) {
+    return this.service.recalcularPrecios(id, dto.tarifaId);
   }
 
   @Delete(':id')
