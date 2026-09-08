@@ -895,6 +895,8 @@ model Programacion {
   creadoPorTercero    Tercero?              @relation("ProgramacionCreadoPor", fields: [creadoPor], references: [id])
   solicitudProgramacion SolicitudProgramacion?
 
+  @@index([fechaQx])
+  @@index([sedeId])
   @@map("programaciones")
 }
 
@@ -1027,6 +1029,8 @@ model Remision {
   detTecnicoDetalles   DetTecnicoDetalle[]
   remTecnicos          RemTecnico[]
 
+  @@index([programacionId])
+  @@index([creadoEn])
   @@map("remisiones")
 }
 
@@ -1050,6 +1054,8 @@ model DetConsumo {
   producto     Producto?     @relation(                          fields: [productoId], references: [id])
   valConsumos  ValConsumo[]
 
+  @@index([programacionId])
+  @@index([remisionId])
   @@map("det_consumos")
 }
 
@@ -1211,6 +1217,7 @@ model Factura {
   detallesFactura DetalleFactura[]
   abonos Abono[]
 
+  @@index([remisionId])
   @@map("facturas")
 }
 
@@ -1256,6 +1263,8 @@ model DetTecnico {
   detalles     DetTecnicoDetalle[]
   programacionPagos ProgramacionPago[]
 
+  @@index([programacionId])
+  @@index([remisionId])
   @@map("det_tecnicos")
 }
 
@@ -1303,6 +1312,9 @@ model ValConsumo {
   metodoPago         FormaPago?    @relation(                         fields: [metodoPagoId],          references: [id])
   lotes              ValConsumoLote[]
 
+  @@index([programacionId])
+  @@index([remisionId])
+  @@index([detConsumoId])
   @@map("val_consumo")
 }
 
@@ -1319,6 +1331,8 @@ model DetTecnicoDetalle {
   remision     Remision?     @relation(fields: [remisionId],     references: [id])
   producto     Producto?     @relation(fields: [productoId],     references: [id])
 
+  @@index([programacionId])
+  @@index([remisionId])
   @@map("det_tecnicos_detalles")
 }
 
@@ -1496,6 +1510,8 @@ model RemTecnico {
   registradoPor Tercero?      @relation("RemTecnicoRegistradoPor",  fields: [registradoPorId], references: [id])
   editadoPor    Tercero?      @relation("RemTecnicoEditadoPor",     fields: [editadoPorId],    references: [id])
 
+  @@index([programacionId])
+  @@index([remisionId])
   @@map("rem_tecnicos")
 }
 
@@ -1524,6 +1540,7 @@ model Requisicion {
   sedeOrigen   Sede?         @relation(                           fields: [sedeOrigenId],   references: [id])
   detalles     DetRequisicion[]
 
+  @@index([programacionId])
   @@map("requisiciones")
 }
 

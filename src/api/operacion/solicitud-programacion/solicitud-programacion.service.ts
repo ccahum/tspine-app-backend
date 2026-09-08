@@ -119,25 +119,34 @@ export class SolicitudProgramacionService {
 
   async findAll(usuarioId: string, estado?: EstadoSolicitud, page = 1, limit = 20) {
     const esRevisor = await this.esRevisor(usuarioId);
+    const baseWhere = esRevisor ? {} : { solicitanteId: usuarioId };
 
-    // Se trae todo lo visible (sin filtrar por estado) para poder calcular el conteo por
-    // pestaña de una sola vez — igual que ya hace Autorización de Consumos — y luego se pagina
-    // en memoria solo lo que corresponde a la pestaña/página pedida.
-    const registros = await this.prisma.solicitudProgramacion.findMany({
-      where: esRevisor ? {} : { solicitanteId: usuarioId },
-      select: SOLICITUD_SELECT,
-      orderBy: { createdAt: 'desc' },
-    });
+    // Antes se traían TODOS los registros visibles (con sus 6 relaciones) solo para contar por
+    // pestaña y paginar en memoria. El conteo por estado se hace con groupBy (agregado en la
+    // base, sin traer filas), y la página pedida se pagina de verdad con skip/take — las tres
+    // consultas corren en paralelo.
+    const [conteosRaw, total, pagina] = await Promise.all([
+      this.prisma.solicitudProgramacion.groupBy({
+        by: ['estado'],
+        where: baseWhere,
+        _count: { estado: true },
+      }),
+      this.prisma.solicitudProgramacion.count({ where: { ...baseWhere, ...(estado ? { estado } : {}) } }),
+      this.prisma.solicitudProgramacion.findMany({
+        where: { ...baseWhere, ...(estado ? { estado } : {}) },
+        select: SOLICITUD_SELECT,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
 
     const conteos = { PENDIENTE: 0, APROBADA: 0, RECHAZADA: 0 };
-    for (const r of registros) {
-      if (r.estado in conteos) conteos[r.estado as keyof typeof conteos]++;
+    for (const c of conteosRaw) {
+      if (c.estado in conteos) conteos[c.estado as keyof typeof conteos] = c._count.estado;
     }
 
-    const filtrados = estado ? registros.filter(r => r.estado === estado) : registros;
-    const total = filtrados.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
-    const pagina = filtrados.slice((page - 1) * limit, page * limit);
 
     return {
       data: pagina.map(r => this.mapItem(r)),

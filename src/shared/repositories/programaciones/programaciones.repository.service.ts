@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { ProgramacionQueryDto } from '@app/api/operacion/programaciones/dto/programacion-query.dto';
 import { nowMexico } from '@app/commons/date.utils';
@@ -79,50 +80,138 @@ export class ProgramacionesRepositoryService {
           sede: { select: { nombre: true } },
           hospital: { select: { nombre: true, ciudadCat: { select: { nombre: true } } } },
           medicos: { include: { medico: { select: { nombreCompleto: true } } } },
-          remisiones: { select: { _count: { select: { detTecnicos: true } } } },
-          detConsumos: { select: { _count: { select: { valConsumos: true } } } },
-          _count: { select: { detTecnicos: true } },
         },
       }),
       this.prisma.programacion.count({ where }),
     ]);
 
-    // Si no encontró resultados y hay búsqueda, intentar con filtro accent-insensitive
+    const dataConIndicadores = await this.attachIndicadores(data);
+
+    // Si no encontró resultados y hay búsqueda, intentar con filtro accent-insensitive.
+    // Antes esto traía TODA la tabla (con las 6 relaciones incluidas) para filtrar en memoria.
+    // Ahora el primer paso es liviano (solo los campos de texto que se comparan), y las
+    // relaciones completas solo se piden para los ids que van a mostrarse en esta página.
     if (total === 0 && search?.trim()) {
       const searchNormalized = normalizeText(search);
       const whereNoSearch: any = { ...where };
       delete whereNoSearch.OR;
 
-      const [allData] = await this.prisma.$transaction([
-        this.prisma.programacion.findMany({
-          where: whereNoSearch,
-          orderBy: [{ fechaQx: 'desc' }, { horaQx: 'asc' }],
-          include: {
-            sede: { select: { nombre: true } },
-            hospital: { select: { nombre: true, ciudadCat: { select: { nombre: true } } } },
-            medicos: { include: { medico: { select: { nombreCompleto: true } } } },
-            remisiones: { select: { _count: { select: { detTecnicos: true } } } },
-            detConsumos: { select: { _count: { select: { valConsumos: true } } } },
-            _count: { select: { detTecnicos: true } },
-          },
-        }),
-        this.prisma.programacion.count({ where: whereNoSearch }),
-      ]);
-
-      const filtered = allData.filter(p => {
-        const idMatch = normalizeText(p.id).includes(searchNormalized);
-        const numProgramMatch = normalizeText(p.numProgram || '').includes(searchNormalized);
-        const hospitalMatch = normalizeText(p.hospital?.nombre || '').includes(searchNormalized);
-        const observacionesMatch = normalizeText(p.observaciones || '').includes(searchNormalized);
-        const medicosMatch = p.medicos.some(m => normalizeText(m.medico.nombreCompleto).includes(searchNormalized));
-        return idMatch || numProgramMatch || hospitalMatch || observacionesMatch || medicosMatch;
+      const liviano = await this.prisma.programacion.findMany({
+        where: whereNoSearch,
+        orderBy: [{ fechaQx: 'desc' }, { horaQx: 'asc' }],
+        select: {
+          id: true,
+          numProgram: true,
+          observaciones: true,
+          hospital: { select: { nombre: true } },
+          medicos: { select: { medico: { select: { nombreCompleto: true } } } },
+        },
       });
 
-      const paginatedData = filtered.slice(skip, skip + limit);
-      return { data: paginatedData, total: filtered.length };
+      const idsFiltrados = liviano
+        .filter(p => {
+          const idMatch = normalizeText(p.id).includes(searchNormalized);
+          const numProgramMatch = normalizeText(p.numProgram || '').includes(searchNormalized);
+          const hospitalMatch = normalizeText(p.hospital?.nombre || '').includes(searchNormalized);
+          const observacionesMatch = normalizeText(p.observaciones || '').includes(searchNormalized);
+          const medicosMatch = p.medicos.some(m => normalizeText(m.medico.nombreCompleto).includes(searchNormalized));
+          return idMatch || numProgramMatch || hospitalMatch || observacionesMatch || medicosMatch;
+        })
+        .map(p => p.id);
+
+      const idsPagina = idsFiltrados.slice(skip, skip + limit);
+      const dataCompleta = await this.prisma.programacion.findMany({
+        where: { id: { in: idsPagina } },
+        include: {
+          sede: { select: { nombre: true } },
+          hospital: { select: { nombre: true, ciudadCat: { select: { nombre: true } } } },
+          medicos: { include: { medico: { select: { nombreCompleto: true } } } },
+        },
+      });
+      const porId = new Map(dataCompleta.map(p => [p.id, p]));
+      const paginatedData = idsPagina.map(id => porId.get(id)!).filter(Boolean);
+      const paginatedDataConIndicadores = await this.attachIndicadores(paginatedData);
+
+      return { data: paginatedDataConIndicadores, total: idsFiltrados.length };
     }
 
-    return { data, total };
+    return { data: dataConIndicadores, total };
+  }
+
+  // sinRemision/sinComision/consumoNoValidado antes se calculaban en JS trayendo, para cada
+  // programación de la página, TODAS sus remisiones y detConsumos (con conteos anidados) — un
+  // join potencialmente enorme solo para saber "¿hay alguna?"/"¿todas están en 0?". Se reemplaza
+  // por una sola consulta de agregados (subconsultas correlacionadas, sin JOIN de tablas 1-a-N
+  // entre sí para evitar fan-out) que calcula lo mismo para todos los ids de la página de una vez.
+  //
+  // Derivación de sinComision: en la fórmula original, "sinComision = (propias == 0) AND todas las
+  // remisiones tienen 0 comisiones" — como los conteos son >= 0, esto equivale exactamente a
+  // "propias + suma de comisiones de todas las remisiones == 0" (si la suma es 0, cada término
+  // individual también lo es).
+  private async attachIndicadores<T extends { id: string }>(rows: T[]) {
+    if (rows.length === 0) return [] as (T & { sinRemision: boolean; sinComision: boolean; consumoNoValidado: boolean })[];
+
+    const ids = rows.map(r => r.id);
+    const agregados = await this.prisma.$queryRaw<
+      { id: string; remisiones_count: bigint; total_comisiones: bigint; det_consumos_count: bigint; det_consumos_validados: bigint }[]
+    >`
+      SELECT
+        p.id,
+        (SELECT COUNT(*) FROM remisiones r WHERE r.programacion_id = p.id) AS remisiones_count,
+        (
+          (SELECT COUNT(*) FROM det_tecnicos dt WHERE dt.programacion_id = p.id) +
+          (SELECT COUNT(*) FROM det_tecnicos dt JOIN remisiones r ON dt.remision_id = r.id WHERE r.programacion_id = p.id)
+        ) AS total_comisiones,
+        (SELECT COUNT(*) FROM det_consumos dc WHERE dc.programacion_id = p.id) AS det_consumos_count,
+        (SELECT COUNT(*) FROM det_consumos dc WHERE dc.programacion_id = p.id AND EXISTS (SELECT 1 FROM val_consumo vc WHERE vc.det_consumo_id = dc.id)) AS det_consumos_validados
+      FROM programaciones p
+      WHERE p.id IN (${Prisma.join(ids)})
+    `;
+
+    const porId = new Map(agregados.map(a => [a.id, a]));
+
+    return rows.map(r => {
+      const a = porId.get(r.id);
+      const remisionesCount = Number(a?.remisiones_count ?? 0);
+      const totalComisiones = Number(a?.total_comisiones ?? 0);
+      const detConsumosCount = Number(a?.det_consumos_count ?? 0);
+      const detConsumosValidados = Number(a?.det_consumos_validados ?? 0);
+      return {
+        ...r,
+        sinRemision: remisionesCount === 0,
+        sinComision: totalComisiones === 0,
+        consumoNoValidado: detConsumosCount === 0 || detConsumosValidados < detConsumosCount,
+      };
+    });
+  }
+
+  // Endpoint liviano para el Calendario — antes reutilizaba findAll() pidiendo limit=10000 con
+  // las 6 relaciones/conteos completos por fila en CADA carga del calendario. Solo trae lo que
+  // esa vista de verdad pinta (fecha/hora, sede, nombres de médicos), sin paginar (el calendario
+  // agrupa por día del lado del cliente y necesita el rango completo visible).
+  async findAllForCalendar(dateFrom?: string, dateTo?: string) {
+    const where: any = {};
+    if (dateFrom || dateTo) {
+      where.fechaQx = {};
+      if (dateFrom) where.fechaQx.gte = new Date(dateFrom);
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        where.fechaQx.lte = end;
+      }
+    }
+
+    return this.prisma.programacion.findMany({
+      where,
+      orderBy: [{ fechaQx: 'desc' }, { horaQx: 'asc' }],
+      select: {
+        id: true,
+        fechaQx: true,
+        horaQx: true,
+        sede: { select: { nombre: true } },
+        medicos: { select: { medico: { select: { nombreCompleto: true } } } },
+      },
+    });
   }
 
   async getById(id: string) {

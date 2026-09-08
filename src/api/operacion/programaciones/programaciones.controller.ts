@@ -43,6 +43,12 @@ export class ProgramacionesController {
     return this.service.findAll(query);
   }
 
+  @Get('calendario')
+  @ApiOperation({ summary: 'Listado liviano de programaciones para el Calendario (sin paginar, sin relaciones pesadas)' })
+  async findAllForCalendar(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
+    return this.service.findAllForCalendar(dateFrom, dateTo);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Crear nueva programación' })
   @ApiCreatedResponse({ type: ProgramacionListItemDto })

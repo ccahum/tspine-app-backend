@@ -105,13 +105,18 @@ export class AutorizacionConsumosService {
   async findAll(usuarioId: string, estado?: EstadoAutorizacion, page = 1, limit = 100) {
     const visibilidad = await this.getVisibilidad(usuarioId);
 
-    const registros = await this.prisma.valConsumo.findMany({
+    // Paso 1: escaneo liviano (sin relaciones) — antes esto mismo traía las 6 relaciones para
+    // CADA fila de la tabla completa solo para poder filtrar/paginar en memoria. La visibilidad
+    // compara sede_consumo_id contra sede_usuario_id de la misma fila, algo que Prisma no puede
+    // expresar en el where, así que el filtro sigue siendo en memoria — pero ahora sobre filas
+    // livianas (4 columnas), no sobre el objeto completo con joins.
+    const registrosLivianos = await this.prisma.valConsumo.findMany({
       where: { eliminar: false, estadoAutorizacion: { in: [...ESTADOS_AUTORIZACION] } },
-      select: VAL_CONSUMO_SELECT,
+      select: { id: true, sedeConsumoId: true, sedeUsuarioId: true, estadoAutorizacion: true },
       orderBy: { marcaTiempo: 'desc' },
     });
 
-    const visibles = registros.filter(r => this.puedeVer(r, visibilidad));
+    const visibles = registrosLivianos.filter(r => this.puedeVer(r, visibilidad));
 
     const conteos = { PENDIENTE: 0, AUTORIZADO: 0, 'NO AUTORIZADO': 0 };
     for (const r of visibles) {
@@ -124,7 +129,15 @@ export class AutorizacionConsumosService {
 
     const total = filtrados.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
-    const pagina = filtrados.slice((page - 1) * limit, page * limit);
+    const paginaIds = filtrados.slice((page - 1) * limit, page * limit).map(r => r.id);
+
+    // Paso 2: solo para los ids de ESTA página se piden las relaciones completas.
+    const registrosPagina = await this.prisma.valConsumo.findMany({
+      where: { id: { in: paginaIds } },
+      select: VAL_CONSUMO_SELECT,
+    });
+    const registrosPorId = new Map(registrosPagina.map(r => [r.id, r]));
+    const pagina = paginaIds.map(id => registrosPorId.get(id)!).filter(Boolean);
 
     const grupos = new Map<string, AutorizacionConsumoGrupo>();
     for (const r of pagina) {

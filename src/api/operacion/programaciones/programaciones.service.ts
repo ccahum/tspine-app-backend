@@ -34,6 +34,9 @@ export class ProgramacionesService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
 
+    // sinRemision/sinComision/consumoNoValidado ya vienen calculados desde el repositorio (ver
+    // ProgramacionesRepositoryService.attachIndicadores) — se calculan ahí con agregados SQL en
+    // vez de traer las filas completas de remisiones/detConsumos, así que aquí solo se leen.
     const items: ProgramacionListItemDto[] = data.map((p: any) => ({
       id: p.id,
       numProgram: p.numProgram ?? null,
@@ -45,9 +48,9 @@ export class ProgramacionesService {
       hospital: p.hospital?.nombre ?? null,
       observaciones: p.observaciones,
       avance: p.avance ? Number(p.avance) : null,
-      sinRemision: computeSinRemision(p),
-      consumoNoValidado: computeConsumoNoValidado(p),
-      sinComision: computeSinComision(p),
+      sinRemision: p.sinRemision,
+      consumoNoValidado: p.consumoNoValidado,
+      sinComision: p.sinComision,
       cerrada: p.switch,
     }));
 
@@ -62,6 +65,17 @@ export class ProgramacionesService {
 
   async getStats(query: ProgramacionQueryDto): Promise<ProgramacionStatsDto> {
     return this.statsRepository.getStats(query);
+  }
+
+  async findAllForCalendar(dateFrom?: string, dateTo?: string) {
+    const data = await this.repository.findAllForCalendar(dateFrom, dateTo);
+    return data.map(p => ({
+      id: p.id,
+      fechaQx: p.fechaQx,
+      horaQx: p.horaQx,
+      sede: p.sede?.nombre ?? null,
+      medicos: p.medicos.map(m => m.medico.nombreCompleto),
+    }));
   }
 
   async getById(id: string) {

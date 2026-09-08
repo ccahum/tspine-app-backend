@@ -215,29 +215,52 @@ export class RemisionesRepositoryService {
       this.prisma.remision.count({ where }),
     ]);
 
+    // Igual que en Programaciones: antes traía TODA la tabla (con el include completo) para
+    // filtrar en memoria. Ahora el primer paso es liviano, y el include completo solo se pide
+    // para los ids que van a mostrarse en esta página.
     if (total === 0 && search?.trim()) {
       const searchNormalized = normalizeText(search);
       const whereNoSearch: any = { ...where };
       delete whereNoSearch.OR;
 
-      const allData = await this.prisma.remision.findMany({
+      const liviano = await this.prisma.remision.findMany({
         where: whereNoSearch,
         orderBy: { creadoEn: 'desc' },
+        select: {
+          id: true,
+          numRemision: true,
+          paciente: true,
+          anestesiologo: true,
+          programacion: {
+            select: {
+              hospital: { select: { nombre: true } },
+              medicos: { select: { medico: { select: { nombreCompleto: true } } } },
+            },
+          },
+        },
+      });
+
+      const idsFiltrados = liviano
+        .filter(r => {
+          const idMatch = normalizeText(r.id).includes(searchNormalized);
+          const numRemisionMatch = normalizeText(r.numRemision || '').includes(searchNormalized);
+          const pacienteMatch = normalizeText(r.paciente || '').includes(searchNormalized);
+          const anestesiologoMatch = normalizeText(r.anestesiologo || '').includes(searchNormalized);
+          const hospitalMatch = normalizeText(r.programacion?.hospital?.nombre || '').includes(searchNormalized);
+          const medicosMatch = (r.programacion?.medicos ?? []).some(m => normalizeText(m.medico.nombreCompleto).includes(searchNormalized));
+          return idMatch || numRemisionMatch || pacienteMatch || anestesiologoMatch || hospitalMatch || medicosMatch;
+        })
+        .map(r => r.id);
+
+      const idsPagina = idsFiltrados.slice(skip, skip + limit);
+      const dataCompleta = await this.prisma.remision.findMany({
+        where: { id: { in: idsPagina } },
         include: REMISION_LIST_INCLUDE,
       });
+      const porId = new Map(dataCompleta.map(r => [r.id, r]));
+      const paginatedData = idsPagina.map(id => porId.get(id)!).filter(Boolean);
 
-      const filtered = allData.filter(r => {
-        const idMatch = normalizeText(r.id).includes(searchNormalized);
-        const numRemisionMatch = normalizeText(r.numRemision || '').includes(searchNormalized);
-        const pacienteMatch = normalizeText(r.paciente || '').includes(searchNormalized);
-        const anestesiologoMatch = normalizeText(r.anestesiologo || '').includes(searchNormalized);
-        const hospitalMatch = normalizeText(r.programacion?.hospital?.nombre || '').includes(searchNormalized);
-        const medicosMatch = (r.programacion?.medicos ?? []).some(m => normalizeText(m.medico.nombreCompleto).includes(searchNormalized));
-        return idMatch || numRemisionMatch || pacienteMatch || anestesiologoMatch || hospitalMatch || medicosMatch;
-      });
-
-      const paginatedData = filtered.slice(skip, skip + limit);
-      return { data: paginatedData, total: filtered.length };
+      return { data: paginatedData, total: idsFiltrados.length };
     }
 
     return { data, total };
@@ -1056,16 +1079,17 @@ export class RemisionesRepositoryService {
   }
 
   async createRequisicion(dto: CreateRequisicionDto, usuarioId: string) {
-    const programacion = await this.prisma.programacion.findUnique({
-      where: { id: dto.programacionId },
-      select: { sedeId: true, hospital: { select: { terceroId: true } } },
-    });
-
-    const id = await this.generateRequisicionId(dto.programacionId);
-    const insumoIds: string[] = [];
-    for (let i = 0; i < (dto.insumos?.length ?? 0); i++) {
-      insumoIds.push(await this.generateDetRequisicionId());
-    }
+    // El ID de cada insumo es un hex aleatorio de 4 bytes (espacio ~4 mil millones), así que
+    // generarlos en paralelo en vez de uno por uno (round-trip a la BD por cada insumo) es seguro:
+    // la probabilidad de colisión entre sí dentro del mismo lote es despreciable.
+    const [programacion, id, insumoIds] = await Promise.all([
+      this.prisma.programacion.findUnique({
+        where: { id: dto.programacionId },
+        select: { sedeId: true, hospital: { select: { terceroId: true } } },
+      }),
+      this.generateRequisicionId(dto.programacionId),
+      Promise.all((dto.insumos ?? []).map(() => this.generateDetRequisicionId())),
+    ]);
 
     return this.prisma.$transaction(async tx => {
       const requisicion = await tx.requisicion.create({
@@ -1481,18 +1505,43 @@ export class RemisionesRepositoryService {
     const subtotal   = detConsumos.reduce((sum, d) => sum + Number(d.valor ?? 0), 0);
     const descuentos = subtotal * (Number(rest.porcentajeDcto ?? 0) / 100) + Number(rest.vrDctoPesos ?? 0);
 
-    // BONOS Y COMISIONES = Det_Tecnicos de esta remisión, agrupados por categoría
-    const detTecnicosComision = await this.prisma.detTecnico.findMany({
-      where: { remisionId },
-      select: {
-        id: true,
-        categoria: true,
-        vrComision: true,
-        tecnico: { select: { nombreCompleto: true } },
-        detalles: { select: { valor: true } },
-      },
-      orderBy: { id: 'asc' },
-    });
+    // Las siguientes tres consultas solo dependen de remisionId (no una de otra) — antes se
+    // esperaban en secuencia, una tras otra; ahora corren en paralelo.
+    const [detTecnicosComision, detallesFactura, facturasRelacionadas] = await Promise.all([
+      // BONOS Y COMISIONES = Det_Tecnicos de esta remisión, agrupados por categoría
+      this.prisma.detTecnico.findMany({
+        where: { remisionId },
+        select: {
+          id: true,
+          categoria: true,
+          vrComision: true,
+          tecnico: { select: { nombreCompleto: true } },
+          detalles: { select: { valor: true } },
+        },
+        orderBy: { id: 'asc' },
+      }),
+      // FACTURADO = SUM(DetalleFactura[SubTotal]) donde Productoid coincide y la factura pertenece a esta remisión
+      // SubTotal (columna virtual en AppSheet) = Cantidad * Preciounitario - Descuento
+      // El campo V/R FACTURA de Remisión viene vacío en el CSV (es una columna virtual no exportada),
+      // así que el TOTAL por factura se recalcula aquí: SUM(SubTotal * (1 + tasa IVA)) por factura.
+      this.prisma.detalleFactura.findMany({
+        where: { facturacion: { remisionId } },
+        select: { facturacionId: true, productoId: true, cantidad: true, precioUnitario: true, descuento: true, ivaId: true },
+      }),
+      // FACTURACIÓN = REF_ROWS("Facturacion", "Remision") — todas las facturas ligadas a esta remisión
+      this.prisma.factura.findMany({
+        where: { remisionId },
+        select: {
+          id: true,
+          folioFacturacion: true,
+          fechaCreacion: true,
+          generadaPor: { select: { nombreCompleto: true } },
+          cliente: { select: { nombreCompleto: true } },
+        },
+        orderBy: { fechaCreacion: 'asc' },
+      }),
+    ]);
+
     const bonosComisionesGrupos = new Map<string, { categoria: string; items: { id: string; tecnico: string | null; monto: number }[] }>();
     for (const r of detTecnicosComision) {
       const cat = r.categoria?.trim() || 'Sin categoría';
@@ -1506,14 +1555,6 @@ export class RemisionesRepositoryService {
     }
     const bonosComisiones = [...bonosComisionesGrupos.values()];
 
-    // FACTURADO = SUM(DetalleFactura[SubTotal]) donde Productoid coincide y la factura pertenece a esta remisión
-    // SubTotal (columna virtual en AppSheet) = Cantidad * Preciounitario - Descuento
-    // El campo V/R FACTURA de Remisión viene vacío en el CSV (es una columna virtual no exportada),
-    // así que el TOTAL por factura se recalcula aquí: SUM(SubTotal * (1 + tasa IVA)) por factura.
-    const detallesFactura = await this.prisma.detalleFactura.findMany({
-      where: { facturacion: { remisionId } },
-      select: { facturacionId: true, productoId: true, cantidad: true, precioUnitario: true, descuento: true, ivaId: true },
-    });
     const facturadoPorProducto = new Map<string, number>();
     const totalPorFactura = new Map<string, number>();
     for (const df of detallesFactura) {
@@ -1528,18 +1569,6 @@ export class RemisionesRepositoryService {
       }
     }
 
-    // FACTURACIÓN = REF_ROWS("Facturacion", "Remision") — todas las facturas ligadas a esta remisión
-    const facturasRelacionadas = await this.prisma.factura.findMany({
-      where: { remisionId },
-      select: {
-        id: true,
-        folioFacturacion: true,
-        fechaCreacion: true,
-        generadaPor: { select: { nombreCompleto: true } },
-        cliente: { select: { nombreCompleto: true } },
-      },
-      orderBy: { fechaCreacion: 'asc' },
-    });
     const facturas = facturasRelacionadas.map(f => ({
       id: f.id,
       folioFacturacion: f.folioFacturacion,
@@ -1638,38 +1667,38 @@ export class RemisionesRepositoryService {
    * 3) "EnviadoaCxC" — marca la remisión como enviada a Cuentas por Cobrar (cxc = true).
    */
   async convertirEnFactura(remisionId: string, usuarioId: string) {
-    const remision = await this.prisma.remision.findUnique({
-      where: { id: remisionId },
-      select: {
-        id: true,
-        paciente: true,
-        vrDctoPesos: true,
-        programacion: {
-          select: {
-            sedeId: true,
-            fechaQx: true,
-            hospital: { select: { nombre: true } },
-            medicos: { select: { medico: { select: { nombreCompleto: true } } } },
+    const [remision, detConsumos, detallesFacturaExistentes] = await Promise.all([
+      this.prisma.remision.findUnique({
+        where: { id: remisionId },
+        select: {
+          id: true,
+          paciente: true,
+          vrDctoPesos: true,
+          programacion: {
+            select: {
+              sedeId: true,
+              fechaQx: true,
+              hospital: { select: { nombre: true } },
+              medicos: { select: { medico: { select: { nombreCompleto: true } } } },
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.detConsumo.findMany({
+        where: { remisionId, eliminar: { not: true } },
+        select: {
+          cantidad: true,
+          valorUnitario: true,
+          valor: true,
+          producto: { select: { id: true, nombre: true, codigoSat: true, udemId: true, objetoImpuestoId: true } },
+        },
+      }),
+      this.prisma.detalleFactura.findMany({
+        where: { facturacion: { remisionId } },
+        select: { productoId: true, cantidad: true, precioUnitario: true, descuento: true },
+      }),
+    ]);
     if (!remision) throw new NotFoundException('Remisión no encontrada');
-
-    const detConsumos = await this.prisma.detConsumo.findMany({
-      where: { remisionId, eliminar: { not: true } },
-      select: {
-        cantidad: true,
-        valorUnitario: true,
-        valor: true,
-        producto: { select: { id: true, nombre: true, codigoSat: true, udemId: true, objetoImpuestoId: true } },
-      },
-    });
-
-    const detallesFacturaExistentes = await this.prisma.detalleFactura.findMany({
-      where: { facturacion: { remisionId } },
-      select: { productoId: true, cantidad: true, precioUnitario: true, descuento: true },
-    });
     const facturadoPorProducto = new Map<string, number>();
     for (const df of detallesFacturaExistentes) {
       if (!df.productoId) continue;
