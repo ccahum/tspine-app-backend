@@ -153,7 +153,7 @@ export class GoogleChatService {
               title: 'Programación',
               subtitle: `${numProgramLabel}`,
               imageUrl: `${backendUrl}/integraciones/google-chat/icon`,
-              imageType: 'SQUARE',
+              imageType: 'CIRCLE',
               imageAltText: 'Luminar',
             },
             sections: [
