@@ -16,11 +16,36 @@ const COTIZACION_LIST_SELECT = {
   medico: true,
   cirugia: true,
   status: true,
-  usuario:  { select: { nombreCompleto: true } },
+  tieneDcto: true,
+  porcentajeDcto: true,
+  impuestos: true,
+  usuario:  { select: { nombreCompleto: true, correo: true } },
   hospital: { select: { nombreCompleto: true } },
   empresa:  { select: { nombreCompleto: true } },
   sede:     { select: { nombre: true } },
 } as const;
+
+// Misma fórmula que computeTotalesFromSubtotal en el frontend (CotizacionesPage.tsx) — se
+// duplica acá porque el listado necesita el total ya calculado por fila, y no vale la pena traer
+// los ítems completos de cada cotización solo para eso (ver el agregado por groupBy en findAll).
+function computeTotalCotizacion(subtotal: number, tieneDcto: boolean, porcentajeDcto: number | null, impuestos: string | null): number {
+  const vrDcto = tieneDcto ? subtotal * (Number(porcentajeDcto) || 0) / 100 : 0;
+  const totalAntesImpuestos = subtotal - vrDcto;
+  const iva = (impuestos === 'Iva' || impuestos === 'Todos') ? totalAntesImpuestos * 0.16 : 0;
+  const retencion = (impuestos === 'Retención' || impuestos === 'Todos') ? totalAntesImpuestos * 0.106667 : 0;
+  return totalAntesImpuestos + iva - retencion;
+}
+
+// El "deber ser" es mostrar el nombre completo del usuario que creó la cotización — pero algunos
+// Terceros migrados de AppSheet tienen nombre_completo vacío. En ese caso se cae al identificador
+// con el que esa persona entra a la app (la parte antes de "@" en su correo, ver EMAIL_DOMAIN en
+// auth), en vez de dejar el campo Usuario en blanco.
+function resolveNombreUsuario(usuario: { nombreCompleto: string; correo: string | null } | null): string | null {
+  if (!usuario) return null;
+  const nombre = usuario.nombreCompleto?.trim();
+  if (nombre) return nombre;
+  return usuario.correo?.split('@')[0] || null;
+}
 
 @Injectable()
 export class CotizacionesService {
@@ -65,6 +90,17 @@ export class CotizacionesService {
       this.prisma.cotizacion.count({ where }),
     ]);
 
+    // Un solo agregado para el subtotal (suma de valor) de todas las cotizaciones de esta página,
+    // en vez de traer los ítems completos de cada una solo para sumarlos en JS.
+    const subtotales = data.length > 0
+      ? await this.prisma.detCotiza.groupBy({
+          by: ['cotizacionId'],
+          where: { cotizacionId: { in: data.map(c => c.id) } },
+          _sum: { valor: true },
+        })
+      : [];
+    const subtotalPorCotizacion = new Map(subtotales.map(s => [s.cotizacionId, Number(s._sum.valor ?? 0)]));
+
     const items = data.map(c => ({
       id: c.id,
       numCotizacion: c.numCotizacion,
@@ -72,10 +108,11 @@ export class CotizacionesService {
       medico: c.medico,
       cirugia: c.cirugia,
       status: c.status,
-      usuario: c.usuario?.nombreCompleto ?? null,
+      usuario: resolveNombreUsuario(c.usuario),
       hospital: c.hospital?.nombreCompleto ?? null,
       empresa: c.empresa?.nombreCompleto ?? null,
       sede: c.sede?.nombre ?? null,
+      total: computeTotalCotizacion(subtotalPorCotizacion.get(c.id) ?? 0, c.tieneDcto, c.porcentajeDcto ? Number(c.porcentajeDcto) : null, c.impuestos),
     }));
 
     return {
@@ -152,7 +189,7 @@ export class CotizacionesService {
       medico: c.medico,
       cirugia: c.cirugia,
       status: c.status,
-      usuario: c.usuario?.nombreCompleto ?? null,
+      usuario: resolveNombreUsuario(c.usuario),
       hospitalId: c.hospitalId,
       hospital: c.hospital?.nombreCompleto ?? null,
       empresaId: c.empresaId,
