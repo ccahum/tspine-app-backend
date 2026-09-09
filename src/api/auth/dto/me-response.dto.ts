@@ -7,6 +7,12 @@ export class MeResponseDto {
   @ApiProperty()
   nombreCompleto: string;
 
+  @ApiProperty({ nullable: true })
+  primerNombre: string | null;
+
+  @ApiProperty({ nullable: true })
+  primerApellido: string | null;
+
   @ApiProperty()
   correo: string | null;
 

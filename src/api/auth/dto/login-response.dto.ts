@@ -8,6 +8,8 @@ export class LoginResponseDto {
   usuario: {
     id: string;
     nombreCompleto: string;
+    primerNombre: string | null;
+    primerApellido: string | null;
     correo: string | null;
     perfilId: string | null;
     perfilNombre: string;

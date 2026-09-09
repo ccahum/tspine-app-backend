@@ -321,6 +321,8 @@ export class AuthService {
     return {
       id: usuario.id,
       nombreCompleto: usuario.nombreCompleto,
+      primerNombre: usuario.primerNombre,
+      primerApellido: usuario.primerApellido,
       correo: usuario.correo,
       perfilId: usuario.perfilId,
       perfilNombre: (usuario as any).perfil?.nombre ?? '',
@@ -361,6 +363,8 @@ export class AuthService {
       usuario: {
         id: usuario.id,
         nombreCompleto: usuario.nombreCompleto,
+        primerNombre: usuario.primerNombre,
+        primerApellido: usuario.primerApellido,
         correo: usuario.correo,
         perfilId: usuario.perfilId,
         perfilNombre: (usuario as any).perfil?.nombre ?? '',
