@@ -55,7 +55,7 @@ export class CotizacionesController {
   }
 
   @Get('tercero-tarifa/:id')
-  @ApiOperation({ summary: 'Tarifa propia de un Tercero (ej. hospital), si tiene una asignada — para autocompletar el campo Tarifa' })
+  @ApiOperation({ summary: 'Tarifa y sede propias de un Tercero (ej. hospital), para autocompletar los campos Tarifa y Sede' })
   getTerceroTarifa(@Param('id') id: string) {
     return this.service.getTerceroTarifa(id);
   }

@@ -71,6 +71,10 @@ export class CreateCotizacionDto {
   @IsOptional() @Type(() => Number) @IsNumber()
   porcentajeDcto?: number;
 
+  @ApiPropertyOptional()
+  @IsOptional() @Type(() => Number) @IsNumber()
+  vrDctoPesos?: number;
+
   @ApiProperty()
   @IsString()
   impuestos!: string;

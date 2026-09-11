@@ -9,6 +9,10 @@ import { UpdateDetCotizaDto } from './dto/update-det-cotiza.dto';
 import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
 import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
 
+// Solo estas categorías de producto son cotizables — el resto (Instrumental, Equipo, Tapa,
+// Utilería, etc.) no debe aparecer al buscar el campo Producto de un consumo.
+const CATEGORIAS_COTIZABLES = ['Renta', 'Implante', 'Consumible', 'Biológico', 'Refrigerados'];
+
 const COTIZACION_LIST_SELECT = {
   id: true,
   numCotizacion: true,
@@ -18,6 +22,7 @@ const COTIZACION_LIST_SELECT = {
   status: true,
   tieneDcto: true,
   porcentajeDcto: true,
+  vrDctoPesos: true,
   impuestos: true,
   usuario:  { select: { nombreCompleto: true, correo: true } },
   hospital: { select: { nombreCompleto: true } },
@@ -28,8 +33,8 @@ const COTIZACION_LIST_SELECT = {
 // Misma fórmula que computeTotalesFromSubtotal en el frontend (CotizacionesPage.tsx) — se
 // duplica acá porque el listado necesita el total ya calculado por fila, y no vale la pena traer
 // los ítems completos de cada cotización solo para eso (ver el agregado por groupBy en findAll).
-function computeTotalCotizacion(subtotal: number, tieneDcto: boolean, porcentajeDcto: number | null, impuestos: string | null): number {
-  const vrDcto = tieneDcto ? subtotal * (Number(porcentajeDcto) || 0) / 100 : 0;
+function computeTotalCotizacion(subtotal: number, tieneDcto: boolean, porcentajeDcto: number | null, vrDctoPesos: number | null, impuestos: string | null): number {
+  const vrDcto = tieneDcto ? (subtotal * (Number(porcentajeDcto) || 0) / 100) + (Number(vrDctoPesos) || 0) : 0;
   const totalAntesImpuestos = subtotal - vrDcto;
   const iva = (impuestos === 'Iva' || impuestos === 'Todos') ? totalAntesImpuestos * 0.16 : 0;
   const retencion = (impuestos === 'Retención' || impuestos === 'Todos') ? totalAntesImpuestos * 0.106667 : 0;
@@ -55,7 +60,9 @@ export class CotizacionesService {
     const { page = 1, limit = 300, search, dateFrom, dateTo } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    // "Eliminar" una cotización solo la desactiva (soft-delete) — el listado nunca debe mostrar
+    // las inactivas, aunque el registro se conserve en la base de datos.
+    const where: any = { activo: true };
 
     if (dateFrom || dateTo) {
       where.fecha = {};
@@ -112,7 +119,7 @@ export class CotizacionesService {
       hospital: c.hospital?.nombreCompleto ?? null,
       empresa: c.empresa?.nombreCompleto ?? null,
       sede: c.sede?.nombre ?? null,
-      total: computeTotalCotizacion(subtotalPorCotizacion.get(c.id) ?? 0, c.tieneDcto, c.porcentajeDcto ? Number(c.porcentajeDcto) : null, c.impuestos),
+      total: computeTotalCotizacion(subtotalPorCotizacion.get(c.id) ?? 0, c.tieneDcto, c.porcentajeDcto ? Number(c.porcentajeDcto) : null, c.vrDctoPesos ? Number(c.vrDctoPesos) : null, c.impuestos),
     }));
 
     return {
@@ -257,6 +264,7 @@ export class CotizacionesService {
         nivel: dto.nivel || null,
         tieneDcto: dto.tieneDcto ?? false,
         porcentajeDcto: dto.porcentajeDcto,
+        vrDctoPesos: dto.vrDctoPesos,
         impuestos: dto.impuestos,
         status: 'Pendiente',
       },
@@ -287,6 +295,7 @@ export class CotizacionesService {
     if (dto.tieneDcto !== undefined) data.tieneDcto = dto.tieneDcto;
     if (dto.porcentajeDcto !== undefined) data.porcentajeDcto = dto.porcentajeDcto;
     if (dto.vrDcto !== undefined) data.vrDcto = dto.vrDcto;
+    if (dto.vrDctoPesos !== undefined) data.vrDctoPesos = dto.vrDctoPesos;
     if (dto.impuestos !== undefined) data.impuestos = dto.impuestos;
 
     await this.prisma.cotizacion.update({ where: { id }, data });
@@ -294,7 +303,9 @@ export class CotizacionesService {
   }
 
   async deleteCotizacion(id: string) {
-    await this.prisma.cotizacion.delete({ where: { id } });
+    // Soft-delete: se conserva el registro (y sus detalles/remisiones asociadas), solo se marca
+    // como inactivo para que deje de aparecer en el listado.
+    await this.prisma.cotizacion.update({ where: { id }, data: { activo: false } });
     return { success: true };
   }
 
@@ -308,6 +319,9 @@ export class CotizacionesService {
     const clasificacionFilter = clasificacion
       ? Prisma.sql`AND EXISTS (SELECT 1 FROM tercero_clasificaciones tc WHERE tc.tercero_id = t.id AND tc.clasificacion = ${clasificacion}::"ClasificacionTercero")`
       : Prisma.empty;
+    // Sin término de búsqueda es el modo "ver todas las opciones" (ej. abrir el campo Médico sin
+    // escribir) — se necesita un límite más alto para que realmente se vean todas, no solo 20.
+    const limit = searchTerm ? 20 : 200;
 
     return this.prisma.$queryRaw<{ id: string; nombreCompleto: string }[]>`
       SELECT t.id, t.nombre_completo AS "nombreCompleto"
@@ -316,7 +330,7 @@ export class CotizacionesService {
       ${searchFilter}
       ${clasificacionFilter}
       ORDER BY t.nombre_completo ASC
-      LIMIT 20
+      LIMIT ${limit}
     `;
   }
 
@@ -327,9 +341,19 @@ export class CotizacionesService {
   async getTerceroTarifa(terceroId: string) {
     const tercero = await this.prisma.tercero.findUnique({
       where: { id: terceroId },
-      select: { tarifaId: true, tarifa: { select: { nombre: true } } },
+      select: {
+        tarifaId: true,
+        tarifa: { select: { nombre: true } },
+        sedeId: true,
+        sede: { select: { nombre: true } },
+      },
     });
-    return { tarifaId: tercero?.tarifaId ?? null, tarifaNombre: tercero?.tarifa?.nombre ?? null };
+    return {
+      tarifaId: tercero?.tarifaId ?? null,
+      tarifaNombre: tercero?.tarifa?.nombre ?? null,
+      sedeId: tercero?.sedeId ?? null,
+      sedeNombre: tercero?.sede?.nombre ?? null,
+    };
   }
 
   async getTarifas() {
@@ -423,18 +447,23 @@ export class CotizacionesService {
   async searchProductos(search?: string, cotizacionId?: string, tarifaId?: string) {
     const searchTerm = search?.trim();
     const productosRaw = await this.prisma.producto.findMany({
-      where: searchTerm
-        ? {
-            OR: [
-              { nombre: { contains: searchTerm, mode: 'insensitive' as const } },
-              { referencia: { contains: searchTerm, mode: 'insensitive' as const } },
-              { sistema: { sistema: { contains: searchTerm, mode: 'insensitive' as const } } },
-            ],
-          }
-        : {},
+      where: {
+        categoriaId: { in: CATEGORIAS_COTIZABLES },
+        ...(searchTerm
+          ? {
+              OR: [
+                { nombre: { contains: searchTerm, mode: 'insensitive' as const } },
+                { referencia: { contains: searchTerm, mode: 'insensitive' as const } },
+                { sistema: { sistema: { contains: searchTerm, mode: 'insensitive' as const } } },
+              ],
+            }
+          : {}),
+      },
       select: { id: true, nombre: true, referencia: true, sistema: { select: { sistema: true } } },
       orderBy: { nombre: 'asc' },
-      take: 20,
+      // Sin término de búsqueda es el modo "ver todas las opciones" — se necesita un límite más
+      // alto para que realmente se vean todas, no solo 20 (mismo criterio que searchTerceros).
+      take: searchTerm ? 20 : 200,
     });
     const productos = productosRaw.map(p => ({ id: p.id, nombre: p.nombre, referencia: p.referencia, sistema: p.sistema?.sistema ?? null }));
 
@@ -574,9 +603,18 @@ export class CotizacionesService {
     throw new Error('No se pudo generar un ID único para el ítem de cotización');
   }
 
+  // Las cotizaciones antiguas tienen id tipo "CT-" + hex aleatorio (8 caracteres, pueden incluir
+  // a-f) — el formato nuevo es "CT-" + 8 dígitos consecutivos. Se filtra con esa regex exacta en
+  // vez de un simple startsWith('CT-'), porque un id viejo como "CT-05f3a1b2" igual empieza con
+  // dígitos y un parseInt ingenuo lo leería como si fuera un número de cotización real.
   private async generateCotizacionId(): Promise<string> {
+    const [last] = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM cotizaciones WHERE id ~ '^CT-[0-9]{8}$' ORDER BY id DESC LIMIT 1
+    `;
+    const nextNum = last ? Number.parseInt(last.id.replace('CT-', ''), 10) + 1 : 1;
+
     for (let attempt = 0; attempt < 5; attempt++) {
-      const id = `CT-${randomBytes(4).toString('hex')}`;
+      const id = `CT-${String(nextNum + attempt).padStart(8, '0')}`;
       const exists = await this.prisma.cotizacion.findUnique({ where: { id }, select: { id: true } });
       if (!exists) return id;
     }

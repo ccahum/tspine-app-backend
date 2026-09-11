@@ -1649,6 +1649,7 @@ model Cotizacion {
   productosPaqueteId     String?   @map("productos_paquete_id")
   contadorPaquetes       Int?      @map("contador_paquetes")
   nivel                  String?
+  activo                 Boolean   @default(true) @map("activo")
 
   usuario              Tercero?           @relation("CotizacionUsuario",     fields: [usuarioId],              references: [id])
   hospital             Tercero?           @relation("CotizacionHospital",    fields: [hospitalId],             references: [id])

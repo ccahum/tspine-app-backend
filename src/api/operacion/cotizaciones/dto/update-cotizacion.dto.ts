@@ -76,6 +76,10 @@ export class UpdateCotizacionDto {
   vrDcto?: number;
 
   @ApiPropertyOptional()
+  @IsOptional() @Type(() => Number) @IsNumber()
+  vrDctoPesos?: number;
+
+  @ApiPropertyOptional()
   @IsOptional() @IsString()
   impuestos?: string;
 }
