@@ -91,7 +91,7 @@ export class CotizacionesService {
         where,
         skip,
         take: limit,
-        orderBy: { fecha: 'desc' },
+        orderBy: { marcaDeTiempo: 'desc' },
         select: COTIZACION_LIST_SELECT,
       }),
       this.prisma.cotizacion.count({ where }),
