@@ -9,6 +9,7 @@ import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
 import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
 import { RecalcularPreciosDto } from './dto/recalcular-precios.dto';
 import { PreciosPorProductosDto } from './dto/precios-por-productos.dto';
+import { SetFirmaCotizacionDto } from './dto/set-firma-cotizacion.dto';
 
 @ApiTags('Operación - Cotizaciones')
 @ApiBearerAuth()
@@ -100,6 +101,12 @@ export class CotizacionesController {
   @ApiOperation({ summary: 'Editar una cotización' })
   updateCotizacion(@Param('id') id: string, @Body() dto: UpdateCotizacionDto) {
     return this.service.updateCotizacion(id, dto);
+  }
+
+  @Patch(':id/firma')
+  @ApiOperation({ summary: 'Guardar/actualizar la firma dibujada de una cotización (PNG en base64)' })
+  setFirma(@Param('id') id: string, @Body() dto: SetFirmaCotizacionDto) {
+    return this.service.setFirma(id, dto.firma);
   }
 
   @Patch(':id/recalcular-precios')

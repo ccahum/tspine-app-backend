@@ -161,6 +161,7 @@ export class CotizacionesService {
         paquete: { select: { nombre: true } },
         contadorPaquetes: true,
         nivel: true,
+        firma: true,
       },
     });
     if (!c) return null;
@@ -223,6 +224,7 @@ export class CotizacionesService {
       paquete: c.paquete?.nombre ?? null,
       contadorPaquetes: c.contadorPaquetes,
       nivel: c.nivel,
+      firma: c.firma,
       items: detalles.map(d => ({
         id: d.id,
         productoId: d.productoId,
@@ -299,6 +301,13 @@ export class CotizacionesService {
     if (dto.impuestos !== undefined) data.impuestos = dto.impuestos;
 
     await this.prisma.cotizacion.update({ where: { id }, data });
+    return this.getById(id);
+  }
+
+  async setFirma(id: string, firma: string) {
+    const existing = await this.prisma.cotizacion.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) throw new NotFoundException('Cotización no encontrada');
+    await this.prisma.cotizacion.update({ where: { id }, data: { firma } });
     return this.getById(id);
   }
 

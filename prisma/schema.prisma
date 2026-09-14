@@ -1650,6 +1650,9 @@ model Cotizacion {
   contadorPaquetes       Int?      @map("contador_paquetes")
   nivel                  String?
   activo                 Boolean   @default(true) @map("activo")
+  // Firma dibujada por el usuario (PNG en base64) — opcional, se puede agregar al crear la
+  // cotización o después desde el detalle. @db.Text porque un varchar normal se queda corto.
+  firma                  String?   @db.Text
 
   usuario              Tercero?           @relation("CotizacionUsuario",     fields: [usuarioId],              references: [id])
   hospital             Tercero?           @relation("CotizacionHospital",    fields: [hospitalId],             references: [id])
