@@ -14,7 +14,6 @@ import { CotizacionesModule } from './api/operacion/cotizaciones/cotizaciones.mo
 import { AutorizacionConsumosModule } from './api/operacion/autorizacion-consumos/autorizacion-consumos.module';
 import { GoogleChatModule } from './api/integrations/google-chat/google-chat.module';
 import { BusquedaGlobalModule } from './api/busqueda-global/busqueda-global.module';
-import { SolicitudProgramacionModule } from './api/operacion/solicitud-programacion/solicitud-programacion.module';
 import { NotificacionesModule } from './api/notificaciones/notificaciones.module';
 import { UsuariosAdminModule } from './api/administracion/usuarios/usuarios-admin.module';
 import { TercerosAdminModule } from './api/administracion/terceros/terceros-admin.module';
@@ -36,7 +35,6 @@ import { ViajeVehiculoModule } from './api/vehicular/viaje-vehiculo/viaje-vehicu
     AutorizacionConsumosModule,
     GoogleChatModule,
     BusquedaGlobalModule,
-    SolicitudProgramacionModule,
     NotificacionesModule,
     UsuariosAdminModule,
     TercerosAdminModule,

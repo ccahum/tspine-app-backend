@@ -40,6 +40,7 @@ export class ProgramacionesService {
     const items: ProgramacionListItemDto[] = data.map((p: any) => ({
       id: p.id,
       numProgram: p.numProgram ?? null,
+      createdAt: p.createdAt,
       fechaQx: p.fechaQx,
       horaQx: p.horaQx,
       sede: p.sede?.nombre ?? null,
@@ -104,6 +105,7 @@ export class ProgramacionesService {
     return {
       id: updated.id,
       numProgram: updated.numProgram ?? null,
+      createdAt: updated.createdAt,
       fechaQx: updated.fechaQx,
       horaQx: updated.horaQx,
       sede: updated.sede?.nombre ?? null,
@@ -155,6 +157,7 @@ export class ProgramacionesService {
     return {
       id: created.id,
       numProgram: created.numProgram ?? null,
+      createdAt: created.createdAt,
       fechaQx: created.fechaQx,
       horaQx: created.horaQx,
       sede: created.sede?.nombre ?? null,
@@ -177,6 +180,7 @@ export class ProgramacionesService {
     return {
       id: updated.id,
       numProgram: updated.numProgram ?? null,
+      createdAt: updated.createdAt,
       fechaQx: updated.fechaQx,
       horaQx: updated.horaQx,
       sede: updated.sede?.nombre ?? null,
@@ -202,6 +206,14 @@ export class ProgramacionesService {
 
   searchMedicos(search?: string) {
     return this.repository.searchMedicos(search);
+  }
+
+  searchCotizaciones(search?: string, medicos?: string) {
+    return this.repository.searchCotizaciones(search, medicos);
+  }
+
+  getConsumosDeCotizaciones(cotizacionIds: string[]) {
+    return this.repository.getConsumosDeCotizaciones(cotizacionIds);
   }
 
   async getMonthComparison(): Promise<ProgramacionComparisonResponseDto> {

@@ -396,6 +396,7 @@ const ciudadCache = new Map<string, string>();
 const cargoCache  = new Map<string, string>();
 const tarifaCache = new Map<string, string>();
 const perfilCache = new Map<string, string>();
+const grupoCache  = new Map<string, string>();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CATÁLOGOS
@@ -406,6 +407,13 @@ async function getOrCreatePais(nombre: string): Promise<string> {
   const r = await prisma.pais.upsert({ where: { nombre }, update: {}, create: { nombre } });
   paisCache.set(nombre, r.id);
   return r.id;
+}
+
+async function getOrCreateTerceroGrupo(nombre: string): Promise<string> {
+  if (grupoCache.has(nombre)) return grupoCache.get(nombre)!;
+  const r = await prisma.terceroGrupo.upsert({ where: { nombre }, update: {}, create: { nombre } });
+  grupoCache.set(nombre, r.nombre);
+  return r.nombre;
 }
 
 async function getOrCreateEstado(nombre: string, paisNombre?: string | null): Promise<string> {
@@ -471,7 +479,7 @@ function mergeNonNull(
 ): Record<string, any> {
   const result: Record<string, any> = {};
   const conservados: string[] = [];
-  const relevantes = ['correo', 'cargoId', 'tarifaId', 'ciudadId', 'paisId', 'perfilId', 'sedeId', 'grupo', 'observaciones'];
+  const relevantes = ['correo', 'cargoId', 'tarifaId', 'ciudadId', 'paisId', 'perfilId', 'sedeId', 'grupoId', 'observaciones'];
 
   for (const [key, val] of Object.entries(incoming)) {
     if (val === null || val === undefined) {
@@ -563,6 +571,7 @@ async function buildTerceroBaseData(row: Record<string, string>, nombre: string)
   const tarifaNomb   = getCol(row, 'TARIFA')?.trim() || null;
   const sedeNomb     = getCol(row, 'SEDE')?.trim() || null;
   const perfilNomb   = getCol(row, 'PERFIL')?.trim() || null;
+  const grupoNomb    = getCol(row, 'GRUPO')?.trim() || null;
   const nomComercial = getCol(row, 'NOMBRE COMERCIAL')?.trim() || null;
   const idLegacy     = (getCol(row, 'ID TERCEROS')?.trim().replace(/\s+/g, ' ')) || nombre;
 
@@ -580,7 +589,7 @@ async function buildTerceroBaseData(row: Record<string, string>, nombre: string)
     fechaNacimiento: parseDate(getCol(row, 'FECHA DE NACIMIENTO')),
     fotoPerfilUrl:   getCol(row, 'FOTO DE PERFIL')?.trim() || null,
     observaciones:   getCol(row, 'OBSERVACIONES')?.trim()  || null,
-    grupo:           getCol(row, 'GRUPO')?.trim() || null,
+    grupoId:         grupoNomb  ? await getOrCreateTerceroGrupo(grupoNomb) : null,
     mir:             parseBool(getCol(row, 'MIR?')),
     tipoPersona:     parseBool(getCol(row, 'TIPO DE PERSONA')),
     tipoContacto:    parseBool(getCol(row, 'TIPO DE CONTACTO')),

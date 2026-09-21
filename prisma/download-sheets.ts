@@ -210,6 +210,21 @@ const SHEETS = [
     sheetName:     'Vehiculos',
     fileName:      'SistemaTspine1.0 - Vehiculos.csv',
   },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'ReferenciasEspeciales',
+    fileName:      'SistemaTspine1.0 - ReferenciasEspeciales.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'NombresProductosEspeciales',
+    fileName:      'SistemaTspine1.0 - NombresProductosEspeciales.csv',
+  },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'TercerosGrupos',
+    fileName:      'SistemaTspine1.0 - TercerosGrupos.csv',
+  },
   // Para agregar más pestañas de SistemaTspine1.0:
   // { spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o', sheetName: 'NombrePestaña', fileName: 'SistemaTspine1.0 - NombrePestaña.csv' },
 ];

@@ -29,4 +29,8 @@ export class UpdateProgramacionDto {
   @ApiPropertyOptional({ type: [String], description: 'IDs de médicos (Tercero)' })
   @IsOptional() @IsArray()
   medicoIds?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'IDs de cotizaciones enlazadas' })
+  @IsOptional() @IsArray()
+  cotizacionIds?: string[];
 }

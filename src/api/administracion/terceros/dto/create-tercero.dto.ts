@@ -93,9 +93,9 @@ export class CreateTerceroDto {
   @IsOptional() @IsBoolean()
   mir?: boolean;
 
-  @ApiPropertyOptional()
-  @IsOptional() @IsBoolean()
-  grupo?: boolean;
+  @ApiPropertyOptional({ description: 'Nombre del grupo (ej. "Operadora de Hospitales Angeles"). Si no existe en el catálogo, se crea.' })
+  @IsOptional() @IsString()
+  grupo?: string;
 
   @ApiPropertyOptional({ type: DatosFiscalesDto })
   @IsOptional() @ValidateNested() @Type(() => DatosFiscalesDto)

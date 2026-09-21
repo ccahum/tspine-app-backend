@@ -516,6 +516,7 @@ model Tarifa {
   cotizacionesCubrimiento Cotizacion[] @relation("CotizacionCubrimiento")
   cotizacionesTarifa      Cotizacion[] @relation("CotizacionTarifa")
 
+  @@index([orden])
   @@map("subtarifas")
 }
 
@@ -541,7 +542,6 @@ model Sede {
   compras                  Compra[]
   movimientosCaja          MovimientoCaja[]
   cotizaciones             Cotizacion[]
-  solicitudesProgramacion  SolicitudProgramacion[]
   vehiculosCatalogo        VehiculoCatalogo[]
   viajesVehiculo           ViajeVehiculo[]
 
@@ -653,8 +653,9 @@ model Tercero {
   creadoPor            String?                   @map("creado_por")
   estadoId             String?                   @map("estado_id")
   fechaNacimiento      DateTime?                 @map("fecha_nacimiento") @db.Date
+  firma                String?                   @db.Text
   fotoPerfilUrl        String?                   @map("foto_perfil_url")
-  grupo                String?
+  grupoId              String?                   @map("grupo_id")
   idLegacy             String?                   @unique @map("id_legacy")
   mir                  Boolean?                  @default(false)
   nombreComercial      String?                   @map("nombre_comercial")
@@ -731,14 +732,12 @@ model Tercero {
   cotizacionesResponsableEconomico Cotizacion[]         @relation("CotizacionResponsable")
   cotizacionesEmpresa              Cotizacion[]         @relation("CotizacionEmpresa")
   detCotizaHospital                DetCotiza[]          @relation("DetCotizaHospital")
-  solicitudesProgramacionSolicitante SolicitudProgramacion[]      @relation("SolicitudProgramacionSolicitante")
-  solicitudesProgramacionRevisor     SolicitudProgramacion[]      @relation("SolicitudProgramacionRevisor")
-  solicitudesProgramacionMedico      SolicitudProgramacionMedico[]
   viajesVehiculoConductor    ViajeVehiculo[] @relation("ViajeVehiculoConductor")
   viajesVehiculoBajaPor      ViajeVehiculo[] @relation("ViajeVehiculoBajaPor")
   cargo                    Cargo?                   @relation(fields: [cargoId], references: [id])
   ciudad                   Ciudad?                  @relation(fields: [ciudadId], references: [id])
   estado                   Estado?                  @relation(fields: [estadoId], references: [id])
+  grupo                    TerceroGrupo?            @relation(fields: [grupoId], references: [nombre])
   pais                     Pais?                    @relation(fields: [paisId], references: [id])
   perfil                   Perfil?                  @relation(fields: [perfilId], references: [id])
   sede                     Sede?                    @relation(fields: [sedeId], references: [id])
@@ -747,6 +746,7 @@ model Tercero {
   totp                     TerceroTotp?
   contactos                TerceroContacto[]
 
+  @@index([nombreCompleto])
   @@map("terceros")
 }
 
@@ -852,7 +852,6 @@ model Hospital {
   ciudadCat      Ciudad?        @relation(fields: [ciudadId], references: [id])
   tercero        Tercero?       @relation(fields: [terceroId], references: [id])
   programaciones Programacion[]
-  solicitudesProgramacion SolicitudProgramacion[]
 
   @@map("hospitales")
 }
@@ -878,6 +877,7 @@ model Programacion {
   switch              Boolean?
   folioRequisicion    String?               @map("folio_requisicion")
   medicos             ProgramacionMedico[]
+  cotizaciones        Cotizacion[]
   tecnicos            ProgramacionTecnico[]
   remisiones          Remision[]
   detConsumos         DetConsumo[]
@@ -893,53 +893,10 @@ model Programacion {
   hospital            Hospital?             @relation(fields: [hospitalId], references: [id])
   sede                Sede?                 @relation(fields: [sedeId], references: [id])
   creadoPorTercero    Tercero?              @relation("ProgramacionCreadoPor", fields: [creadoPor], references: [id])
-  solicitudProgramacion SolicitudProgramacion?
 
   @@index([fechaQx])
   @@index([sedeId])
   @@map("programaciones")
-}
-
-// Solicitud de programación: flujo nuevo (no existía en el sistema viejo de AppSheet) donde
-// cualquier usuario puede solicitar una programación quirúrgica, y un revisor (por ahora solo
-// super-admin, ver PERFIL_SUPER_ADMIN en autorizacion-consumos — el mismo patrón que ya usa
-// Autorización de Consumos) la aprueba o rechaza con motivo. Al aprobarla se crea la Programación
-// real (reusando ProgramacionesRepositoryService.create) y queda enlazada vía programacionId.
-model SolicitudProgramacion {
-  id             String    @id @default(uuid())
-  fechaQx        DateTime? @map("fecha_qx") @db.Date
-  horaQx         String?   @map("hora_qx")
-  sedeId         String?   @map("sede_id")
-  hospitalId     String?   @map("hospital_id")
-  consumo        String?
-  observaciones  String?
-  estado         String    @default("PENDIENTE")
-  motivoRechazo  String?   @map("motivo_rechazo")
-  solicitanteId  String?   @map("solicitante_id")
-  revisorId      String?   @map("revisor_id")
-  fechaRevision  DateTime? @map("fecha_revision")
-  programacionId String?   @unique @map("programacion_id")
-  createdAt      DateTime  @default(now()) @map("created_at")
-
-  sede         Sede?                          @relation(fields: [sedeId], references: [id])
-  hospital     Hospital?                      @relation(fields: [hospitalId], references: [id])
-  solicitante  Tercero?                       @relation("SolicitudProgramacionSolicitante", fields: [solicitanteId], references: [id])
-  revisor      Tercero?                       @relation("SolicitudProgramacionRevisor",     fields: [revisorId],     references: [id])
-  programacion Programacion?                  @relation(fields: [programacionId], references: [id])
-  medicos      SolicitudProgramacionMedico[]
-
-  @@map("solicitudes_programacion")
-}
-
-model SolicitudProgramacionMedico {
-  solicitudId String @map("solicitud_id")
-  medicoId    String @map("medico_id")
-
-  solicitud SolicitudProgramacion @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
-  medico    Tercero               @relation(fields: [medicoId], references: [id])
-
-  @@id([solicitudId, medicoId])
-  @@map("solicitud_programacion_medicos")
 }
 
 model TecnicoSugerido {
@@ -1185,7 +1142,10 @@ model Producto {
   preciosEspeciales  PrecioEspecial[]
   detallePaquetes    DetallePaquete[]
   detCotiza          DetCotiza[]
+  referenciasEspeciales ReferenciaEspecial[]
+  nombresEspeciales     NombreProductoEspecial[]
 
+  @@index([nombre])
   @@map("productos")
 }
 
@@ -1585,6 +1545,8 @@ model ListaPrecio {
   subtarifa Tarifa?   @relation(fields: [subtarifaId], references: [id])
   producto  Producto? @relation(fields: [productoId],  references: [id])
 
+  @@index([productoId])
+  @@index([subtarifaId])
   @@map("listas_precio")
 }
 
@@ -1598,7 +1560,49 @@ model PrecioEspecial {
   producto Producto? @relation(fields: [productoId], references: [id])
   contacto Tercero?  @relation(fields: [contactoId],  references: [id])
 
+  @@index([productoId])
+  @@index([contactoId])
   @@map("precios_especiales")
+}
+
+// "Grupo" referencia a TerceroGrupo (catálogo por nombre, ver ese modelo) — no a un Tercero
+// puntual, porque varios Terceros comparten el mismo grupo (ej. "Operadora de Hospitales
+// Angeles" agrupa a varios hospitales).
+model ReferenciaEspecial {
+  id         String  @id
+  productoId String? @map("producto_id")
+  referencia String?
+  grupoId    String? @map("grupo_id")
+
+  producto Producto?     @relation(fields: [productoId], references: [id])
+  grupo    TerceroGrupo? @relation(fields: [grupoId],    references: [nombre])
+
+  @@map("referencias_especiales")
+}
+
+model NombreProductoEspecial {
+  id             String  @id
+  productoId     String? @map("producto_id")
+  nombreEspecial String? @map("nombre_especial")
+  grupoId        String? @map("grupo_id")
+
+  producto Producto?     @relation(fields: [productoId], references: [id])
+  grupo    TerceroGrupo? @relation(fields: [grupoId],    references: [nombre])
+
+  @@map("nombres_productos_especiales")
+}
+
+// Catálogo de grupos de Terceros (ej. "Operadora de Hospitales Angeles") — el nombre es la
+// clave, no un id sintético, igual que Categoria/Marca/Sistema en este mismo schema. Permite
+// renombrar un grupo en un solo lugar (ON UPDATE CASCADE propaga el cambio a quien lo referencie).
+model TerceroGrupo {
+  nombre String @id
+
+  terceros              Tercero[]
+  referenciasEspeciales ReferenciaEspecial[]
+  nombresEspeciales     NombreProductoEspecial[]
+
+  @@map("terceros_grupos")
 }
 
 model DetallePaquete {
@@ -1653,6 +1657,9 @@ model Cotizacion {
   // Firma dibujada por el usuario (PNG en base64) — opcional, se puede agregar al crear la
   // cotización o después desde el detalle. @db.Text porque un varchar normal se queda corto.
   firma                  String?   @db.Text
+  // Vincula la cotización a la Programación en la que se usó — se elige desde el campo
+  // "Cotización" de Nueva Programación, buscando por el nombre del médico.
+  programacionId         String?   @map("programacion_id")
 
   usuario              Tercero?           @relation("CotizacionUsuario",     fields: [usuarioId],              references: [id])
   hospital             Tercero?           @relation("CotizacionHospital",    fields: [hospitalId],             references: [id])
@@ -1663,6 +1670,7 @@ model Cotizacion {
   sede                 Sede?              @relation(fields: [sedeId],             references: [id])
   paquete              PaqueteCotizacion? @relation(fields: [paqueteId],          references: [id])
   productosPaquete     DetallePaquete?    @relation(fields: [productosPaqueteId], references: [id])
+  programacion         Programacion?      @relation(fields: [programacionId],     references: [id])
   detalles             DetCotiza[]
 
   @@map("cotizaciones")
@@ -1674,6 +1682,7 @@ model DetCotiza {
   marcaDeTiempo DateTime? @map("marca_de_tiempo")
   hospitalId    String?   @map("hospital_id")
   referencia    String?
+  descripcion   String?
   productoId    String?   @map("producto_id")
   cantidad      Decimal?  @db.Decimal(10, 2)
   valorUnitario Decimal?  @map("valor_unitario") @db.Decimal(15, 2)

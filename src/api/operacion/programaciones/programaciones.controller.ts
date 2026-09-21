@@ -75,6 +75,19 @@ export class ProgramacionesController {
     return this.service.searchMedicos(search);
   }
 
+  @Get('cotizaciones')
+  @ApiOperation({ summary: 'Buscar cotizaciones por nombre de médico, para vincularlas a una programación. Si se pasa "medicos" (nombres separados por coma), filtra estrictamente por esos médicos en vez de por "search".' })
+  async searchCotizaciones(@Query('search') search?: string, @Query('medicos') medicos?: string) {
+    return this.service.searchCotizaciones(search, medicos);
+  }
+
+  @Get('cotizaciones/items')
+  @ApiOperation({ summary: 'Nombres de los productos ya cotizados en una o más cotizaciones, para importarlos al campo Consumo' })
+  async getConsumosDeCotizaciones(@Query('ids') ids?: string) {
+    const cotizacionIds = ids ? ids.split(',').filter(Boolean) : [];
+    return this.service.getConsumosDeCotizaciones(cotizacionIds);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obtener detalles de una programación' })
   async getById(@Param('id') id: string) {

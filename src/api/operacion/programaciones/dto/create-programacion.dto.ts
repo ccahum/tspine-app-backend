@@ -29,4 +29,8 @@ export class CreateProgramacionDto {
   @ApiPropertyOptional({ type: [String], description: 'IDs de médicos (Tercero)' })
   @IsOptional() @IsArray()
   medicoIds?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'IDs de cotizaciones a vincular' })
+  @IsOptional() @IsArray()
+  cotizacionIds?: string[];
 }

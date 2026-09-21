@@ -33,8 +33,8 @@ export class CotizacionesController {
 
   @Get('productos')
   @ApiOperation({ summary: 'Buscar Productos por nombre, para agregar un ítem a una cotización (incluye precio sugerido según la tarifa de la cotización, o de tarifaId si aún no existe la cotización)' })
-  searchProductos(@Query('search') search?: string, @Query('cotizacionId') cotizacionId?: string, @Query('tarifaId') tarifaId?: string) {
-    return this.service.searchProductos(search, cotizacionId, tarifaId);
+  searchProductos(@Query('search') search?: string, @Query('cotizacionId') cotizacionId?: string, @Query('tarifaId') tarifaId?: string, @Query('hospitalId') hospitalId?: string) {
+    return this.service.searchProductos(search, cotizacionId, tarifaId, hospitalId);
   }
 
   @Get('terceros')

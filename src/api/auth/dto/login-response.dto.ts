@@ -15,5 +15,6 @@ export class LoginResponseDto {
     perfilNombre: string;
     reglas: string;
     sedeId: string | null;
+    tieneFirma: boolean;
   };
 }

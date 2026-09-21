@@ -136,6 +136,7 @@ export class RemisionesRepositoryService {
       where: { programacionId },
       select: {
         id: true,
+        tecnicoId: true,
         fechaRegistro: true,
         tecnico: { select: { nombreCompleto: true } },
         registradoPor: { select: { nombreCompleto: true } },
@@ -144,6 +145,7 @@ export class RemisionesRepositoryService {
     });
     return items.map(it => ({
       id: it.id,
+      tecnicoId: it.tecnicoId,
       fechaRegistro: it.fechaRegistro,
       tecnico: it.tecnico?.nombreCompleto ?? null,
       registradoPor: it.registradoPor?.nombreCompleto ?? null,

@@ -328,7 +328,22 @@ export class AuthService {
       perfilNombre: (usuario as any).perfil?.nombre ?? '',
       reglas: (usuario as any).perfil?.reglas ?? '',
       sedeId: usuario.sedeId,
+      tieneFirma: !!usuario.firma,
     };
+  }
+
+  // Firma personal del usuario — se le ofrece configurarla al iniciar sesión por primera vez
+  // (opcional, se puede omitir), y de ahí se reutiliza en el formulario de crear/editar cotización
+  // en vez de tener que dibujarla cada vez.
+  async obtenerFirma(usuarioId: string): Promise<{ firma: string | null }> {
+    const usuario = await this.prisma.tercero.findUnique({ where: { id: usuarioId }, select: { firma: true } });
+    return { firma: usuario?.firma ?? null };
+  }
+
+  async guardarFirma(usuarioId: string, firma: string): Promise<{ firma: string }> {
+    const usuario = await this.prisma.tercero.update({ where: { id: usuarioId }, data: { firma }, select: { firma: true } });
+    LoggerExtensions.writeInfo(this.logger, 'Firma personal guardada', { usuarioId });
+    return { firma: usuario.firma! };
   }
 
   private async verificarPendingToken(pendingToken: string): Promise<string> {
@@ -370,6 +385,7 @@ export class AuthService {
         perfilNombre: (usuario as any).perfil?.nombre ?? '',
         reglas: (usuario as any).perfil?.reglas ?? '',
         sedeId: usuario.sedeId,
+        tieneFirma: !!usuario.firma,
       },
     };
   }

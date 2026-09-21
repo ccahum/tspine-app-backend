@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
-import { ProgramacionQueryDto } from '@app/api/operacion/programaciones/dto/programacion-query.dto';
+import { ProgramacionQueryDto, ProgramacionSortField } from '@app/api/operacion/programaciones/dto/programacion-query.dto';
 import { nowMexico } from '@app/commons/date.utils';
 
 const normalizeText = (text: string): string =>
@@ -10,13 +10,41 @@ const normalizeText = (text: string): string =>
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
 
+// Mismo criterio que buildCotizacionOrderBy en cotizaciones.service.ts — clic en el encabezado de
+// la tabla decide la columna, por defecto (sin sortBy) se ordena por createdAt más reciente primero.
+function buildProgramacionOrderBy(sortBy: ProgramacionSortField | undefined, sortOrder: 'asc' | 'desc' | undefined): Prisma.ProgramacionOrderByWithRelationInput {
+  const order = sortOrder ?? 'asc';
+  switch (sortBy) {
+    case 'numProgram': return { numProgram: order };
+    case 'createdAt': return { createdAt: order };
+    case 'fechaQx': return { fechaQx: order };
+    case 'horaQx': return { horaQx: order };
+    case 'sede': return { sede: { nombre: order } };
+    case 'hospital': return { hospital: { nombre: order } };
+    case 'observaciones': return { observaciones: order };
+    default: return { createdAt: 'desc' };
+  }
+}
+
+// Misma fórmula que computeTotalCotizacion en cotizaciones.service.ts / computeTotalesFromSubtotal
+// en el frontend — se duplica acá (mismo criterio ya usado entre esos dos) porque este buscador
+// vive en un módulo distinto y no vale la pena acoplarlo al de Cotizaciones solo por esto.
+function computeTotalCotizacion(subtotal: number, tieneDcto: boolean, porcentajeDcto: number | null, vrDctoPesos: number | null, impuestos: string | null): number {
+  const vrDcto = tieneDcto ? (subtotal * (Number(porcentajeDcto) || 0) / 100) + (Number(vrDctoPesos) || 0) : 0;
+  const totalAntesImpuestos = subtotal - vrDcto;
+  const iva = (impuestos === 'Iva' || impuestos === 'Todos') ? totalAntesImpuestos * 0.16 : 0;
+  const retencion = (impuestos === 'Retención' || impuestos === 'Todos') ? totalAntesImpuestos * 0.106667 : 0;
+  return totalAntesImpuestos + iva - retencion;
+}
+
 @Injectable()
 export class ProgramacionesRepositoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: ProgramacionQueryDto) {
-    const { page = 1, limit = 50, dateFrom, dateTo, sedeId, search, cerrada, sinRemision, sinComision, consumoNoValidado, conRequisicion } = query;
+    const { page = 1, limit = 50, dateFrom, dateTo, sedeId, search, cerrada, sinRemision, sinComision, consumoNoValidado, conRequisicion, sortBy, sortOrder } = query;
     const skip = (page - 1) * limit;
+    const orderBy = buildProgramacionOrderBy(sortBy, sortOrder);
 
     const where: any = {};
 
@@ -75,7 +103,7 @@ export class ProgramacionesRepositoryService {
         where,
         skip,
         take: limit,
-        orderBy: [{ fechaQx: 'desc' }, { horaQx: 'asc' }],
+        orderBy,
         include: {
           sede: { select: { nombre: true } },
           hospital: { select: { nombre: true, ciudadCat: { select: { nombre: true } } } },
@@ -98,7 +126,7 @@ export class ProgramacionesRepositoryService {
 
       const liviano = await this.prisma.programacion.findMany({
         where: whereNoSearch,
-        orderBy: [{ fechaQx: 'desc' }, { horaQx: 'asc' }],
+        orderBy,
         select: {
           id: true,
           numProgram: true,
@@ -227,6 +255,20 @@ export class ProgramacionesRepositoryService {
             remisiones: { select: { _count: { select: { detTecnicos: true } } } },
             detConsumos: { select: { _count: { select: { valConsumos: true } } } },
             _count: { select: { detTecnicos: true } },
+            cotizaciones: {
+              select: {
+                id: true,
+                numCotizacion: true,
+                medico: true,
+                fecha: true,
+                cirugia: true,
+                tieneDcto: true,
+                porcentajeDcto: true,
+                vrDctoPesos: true,
+                impuestos: true,
+                hospital: { select: { nombreCompleto: true } },
+              },
+            },
           },
         }),
         this.prisma.remision.findMany({
@@ -317,8 +359,29 @@ export class ProgramacionesRepositoryService {
     // UTILIDAD BRUTA = BASE INGRESO - SUM(Det_Tecnicos[V/R COMIS. O BONIFIC]) - COSTO TOTAL
     const utilidadBruta = baseIngreso - comisiones - costoTotal;
 
+    // Mismo agregado que usa searchCotizaciones — un solo groupBy para el subtotal de las
+    // cotizaciones vinculadas a esta programación, en vez de traer sus ítems completos.
+    const cotizacionIds = programacion.cotizaciones.map(c => c.id);
+    const subtotalesCotizaciones = cotizacionIds.length > 0
+      ? await this.prisma.detCotiza.groupBy({
+          by: ['cotizacionId'],
+          where: { cotizacionId: { in: cotizacionIds } },
+          _sum: { valor: true },
+        })
+      : [];
+    const subtotalPorCotizacion = new Map(subtotalesCotizaciones.map(s => [s.cotizacionId, Number(s._sum.valor ?? 0)]));
+
     return {
       ...programacion,
+      cotizaciones: programacion.cotizaciones.map(c => ({
+        id: c.id,
+        numCotizacion: c.numCotizacion,
+        medico: c.medico,
+        fecha: c.fecha,
+        cirugia: c.cirugia,
+        hospital: c.hospital,
+        total: computeTotalCotizacion(subtotalPorCotizacion.get(c.id) ?? 0, c.tieneDcto, c.porcentajeDcto ? Number(c.porcentajeDcto) : null, c.vrDctoPesos ? Number(c.vrDctoPesos) : null, c.impuestos),
+      })),
       total:         total         > 0 ? total         : null,
       descuentos:    descuentos    > 0 ? descuentos    : null,
       nc:            nc            > 0 ? nc            : null,
@@ -382,7 +445,7 @@ export class ProgramacionesRepositoryService {
     });
   }
 
-  async update(id: string, dto: { fechaQx?: string; horaQx?: string; sedeId?: string; hospitalId?: string; observaciones?: string; consumo?: string; medicoIds?: string[] }) {
+  async update(id: string, dto: { fechaQx?: string; horaQx?: string; sedeId?: string; hospitalId?: string; observaciones?: string; consumo?: string; medicoIds?: string[]; cotizacionIds?: string[] }) {
     const data: any = {};
     if (dto.fechaQx !== undefined) data.fechaQx = new Date(dto.fechaQx);
     if (dto.horaQx !== undefined) data.horaQx = dto.horaQx;
@@ -391,13 +454,24 @@ export class ProgramacionesRepositoryService {
     if (dto.observaciones !== undefined) data.observaciones = dto.observaciones;
     if (dto.consumo !== undefined) data.consumo = dto.consumo;
 
+    if (dto.cotizacionIds !== undefined) {
+      // "set" reemplaza la lista completa de cotizaciones enlazadas: conecta las nuevas y
+      // desconecta (programacionId vuelve a null) las que ya no estén en la lista — mismo
+      // comportamiento que "connect" en create(), pero permitiendo también quitar cotizaciones.
+      data.cotizaciones = { set: dto.cotizacionIds.map(cotizacionId => ({ id: cotizacionId })) };
+    }
+
     if (dto.medicoIds !== undefined) {
-      await this.prisma.programacionMedico.deleteMany({ where: { programacionId: id } });
-      if (dto.medicoIds.length > 0) {
-        await this.prisma.programacionMedico.createMany({
-          data: dto.medicoIds.map(medicoId => ({ programacionId: id, medicoId })),
-        });
+      // Guarda contra que la edición deje una programación sin ningún médico — el frontend ya
+      // no debería poder enviar esto (ver validación en handleGuardarEdit), pero se repite acá
+      // porque este método reemplaza la lista completa de médicos.
+      if (dto.medicoIds.length === 0) {
+        throw new BadRequestException('La programación debe tener al menos un médico.');
       }
+      await this.prisma.programacionMedico.deleteMany({ where: { programacionId: id } });
+      await this.prisma.programacionMedico.createMany({
+        data: dto.medicoIds.map(medicoId => ({ programacionId: id, medicoId })),
+      });
     }
 
     return this.prisma.programacion.update({
@@ -440,6 +514,73 @@ export class ProgramacionesRepositoryService {
     });
   }
 
+  // Para el campo "Cotización" de Nueva Programación — se busca por el nombre del médico (texto
+  // libre en Cotizacion.medico) y solo se ofrecen las que aún no están vinculadas a otra
+  // programación, para no "robarle" por accidente una cotización ya usada en otra cirugía.
+  // `medicosParam` son los médicos ya seleccionados en el formulario de Programación (nombres
+  // separados por coma) — cuando vienen, filtran de forma precisa (la cotización debe pertenecer
+  // a alguno de esos médicos) y `search` se ignora, en vez de dejar que el usuario escriba un
+  // nombre distinto y encuentre cotizaciones de médicos que no tiene seleccionados.
+  async searchCotizaciones(search?: string, medicosParam?: string) {
+    const searchTerm = search?.trim();
+    const medicoNombres = medicosParam ? medicosParam.split(',').map(m => m.trim()).filter(Boolean) : [];
+    const data = await this.prisma.cotizacion.findMany({
+      where: {
+        activo: true,
+        programacionId: null,
+        ...(medicoNombres.length > 0
+          ? { OR: medicoNombres.map(nombre => ({ medico: { contains: nombre, mode: 'insensitive' as const } })) }
+          : searchTerm ? { medico: { contains: searchTerm, mode: 'insensitive' as const } } : {}),
+      },
+      select: {
+        id: true,
+        numCotizacion: true,
+        medico: true,
+        fecha: true,
+        cirugia: true,
+        tieneDcto: true,
+        porcentajeDcto: true,
+        vrDctoPesos: true,
+        impuestos: true,
+        hospital: { select: { nombreCompleto: true } },
+      },
+      orderBy: { medico: 'asc' },
+      take: medicoNombres.length > 0 ? 200 : searchTerm ? 20 : 200,
+    });
+
+    // Mismo agregado que usa el listado de Cotizaciones — un solo groupBy para el subtotal de
+    // todas en vez de traer los ítems completos de cada una solo para sumarlos.
+    const subtotales = data.length > 0
+      ? await this.prisma.detCotiza.groupBy({
+          by: ['cotizacionId'],
+          where: { cotizacionId: { in: data.map(c => c.id) } },
+          _sum: { valor: true },
+        })
+      : [];
+    const subtotalPorCotizacion = new Map(subtotales.map(s => [s.cotizacionId, Number(s._sum.valor ?? 0)]));
+
+    return data.map(c => ({
+      id: c.id,
+      numCotizacion: c.numCotizacion,
+      medico: c.medico,
+      fecha: c.fecha,
+      cirugia: c.cirugia,
+      hospital: c.hospital,
+      total: computeTotalCotizacion(subtotalPorCotizacion.get(c.id) ?? 0, c.tieneDcto, c.porcentajeDcto ? Number(c.porcentajeDcto) : null, c.vrDctoPesos ? Number(c.vrDctoPesos) : null, c.impuestos),
+    }));
+  }
+
+  // Para el botón "Importar de la cotización" del campo Consumo — trae solo los nombres de los
+  // productos ya cotizados, para agregarlos de un clic en vez de buscarlos uno por uno.
+  async getConsumosDeCotizaciones(cotizacionIds: string[]) {
+    if (cotizacionIds.length === 0) return [];
+    const detalles = await this.prisma.detCotiza.findMany({
+      where: { cotizacionId: { in: cotizacionIds } },
+      select: { descripcion: true, producto: { select: { nombre: true } } },
+    });
+    return detalles.map(d => d.descripcion ?? d.producto?.nombre ?? null).filter((n): n is string => !!n);
+  }
+
   private async generateId(): Promise<string> {
     const last = await this.prisma.programacion.findFirst({
       where: { id: { startsWith: 'PRO_' } },
@@ -451,7 +592,7 @@ export class ProgramacionesRepositoryService {
     return `PRO_${String(Number.isNaN(num) ? 1 : num + 1).padStart(7, '0')}`;
   }
 
-  async create(dto: { fechaQx?: string; horaQx?: string; sedeId?: string; hospitalId?: string; observaciones?: string; consumo?: string; medicoIds?: string[] }, usuarioId: string) {
+  async create(dto: { fechaQx?: string; horaQx?: string; sedeId?: string; hospitalId?: string; observaciones?: string; consumo?: string; medicoIds?: string[]; cotizacionIds?: string[] }, usuarioId: string) {
     const id = await this.generateId();
     const programacion = await this.prisma.programacion.create({
       data: {
@@ -466,6 +607,9 @@ export class ProgramacionesRepositoryService {
         consumo: dto.consumo ?? null,
         medicos: {
           create: (dto.medicoIds ?? []).map(medicoId => ({ medicoId })),
+        },
+        cotizaciones: {
+          connect: (dto.cotizacionIds ?? []).map(cotizacionId => ({ id: cotizacionId })),
         },
       },
       include: {

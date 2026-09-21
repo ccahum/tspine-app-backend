@@ -1,6 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+
+export const PROGRAMACION_SORT_FIELDS = ['numProgram', 'createdAt', 'fechaQx', 'horaQx', 'sede', 'hospital', 'observaciones'] as const;
+export type ProgramacionSortField = (typeof PROGRAMACION_SORT_FIELDS)[number];
 
 export class ProgramacionQueryDto {
   @ApiPropertyOptional({ default: 1 })
@@ -71,4 +74,12 @@ export class ProgramacionQueryDto {
   @Type(() => Boolean)
   @IsBoolean()
   conRequisicion?: boolean;
+
+  @ApiPropertyOptional({ enum: PROGRAMACION_SORT_FIELDS, description: 'Columna por la que ordenar el listado (clic en el encabezado de la tabla)' })
+  @IsOptional() @IsIn(PROGRAMACION_SORT_FIELDS)
+  sortBy?: ProgramacionSortField;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'] })
+  @IsOptional() @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc';
 }

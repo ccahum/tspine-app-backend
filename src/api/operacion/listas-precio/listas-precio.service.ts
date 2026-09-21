@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '@app/prisma/prisma.service';
-import { ListaPrecioQueryDto } from './dto/lista-precio-query.dto';
+import { ListaPrecioQueryDto, ListaPrecioSortField } from './dto/lista-precio-query.dto';
 import { UpdateListaPrecioDto } from './dto/update-lista-precio.dto';
 import { CreateListaPrecioDto } from './dto/create-lista-precio.dto';
 
@@ -52,12 +52,28 @@ function mapListaPrecio(lp: ListaPrecioRow) {
   };
 }
 
+// Utilidad % y Utilidad $ no son columnas reales (se calculan en el frontend a partir de
+// costoUtilidad/precio), por lo que no se pueden ordenar vía Prisma sin SQL crudo — quedan
+// fuera de los campos ordenables, igual que "Total" en Cotizaciones.
+function buildOrderBy(sortBy?: ListaPrecioSortField, sortOrder: 'asc' | 'desc' = 'asc') {
+  switch (sortBy) {
+    case 'subtarifa': return [{ subtarifa: { nombre: sortOrder } }];
+    case 'producto': return [{ producto: { nombre: sortOrder } }];
+    case 'costoUtilidad': return [{ costoUtilidad: sortOrder }];
+    case 'porcentajeGanancia': return [{ porcentajeGanancia: sortOrder }];
+    case 'precio': return [{ precio: sortOrder }];
+    case 'dependeDe': return [{ subtarifa: { tipoCubrimiento: { nombre: sortOrder } } }];
+    case 'formaActualizacion': return [{ formaActualizacion: sortOrder }];
+    default: return [{ producto: { nombre: 'asc' as const } }, { subtarifa: { orden: 'asc' as const } }];
+  }
+}
+
 @Injectable()
 export class ListasPrecioService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: ListaPrecioQueryDto) {
-    const { page = 1, limit = 300, search } = query;
+    const { page = 1, limit = 300, search, sortBy, sortOrder } = query;
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -74,7 +90,7 @@ export class ListasPrecioService {
         where,
         skip,
         take: limit,
-        orderBy: [{ producto: { nombre: 'asc' } }, { subtarifa: { orden: 'asc' } }],
+        orderBy: buildOrderBy(sortBy, sortOrder),
         select: LISTA_PRECIO_SELECT,
       }),
       this.prisma.listaPrecio.count({ where }),

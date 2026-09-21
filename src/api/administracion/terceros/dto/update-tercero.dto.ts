@@ -64,9 +64,9 @@ export class UpdateTerceroDto {
   @IsOptional() @IsBoolean()
   mir?: boolean;
 
-  @ApiPropertyOptional()
-  @IsOptional() @IsBoolean()
-  grupo?: boolean;
+  @ApiPropertyOptional({ description: 'Nombre del grupo (ej. "Operadora de Hospitales Angeles"). Si no existe en el catálogo, se crea. Cadena vacía = quitar el grupo.' })
+  @IsOptional() @IsString()
+  grupo?: string;
 
   @ApiPropertyOptional()
   @IsOptional() @IsBoolean()

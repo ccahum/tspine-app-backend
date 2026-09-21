@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { nowMexico } from '@app/commons/date.utils';
-import { CotizacionQueryDto } from './dto/cotizacion-query.dto';
+import { CotizacionQueryDto, CotizacionSortField } from './dto/cotizacion-query.dto';
 import { CreateDetCotizaDto } from './dto/create-det-cotiza.dto';
 import { UpdateDetCotizaDto } from './dto/update-det-cotiza.dto';
 import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
@@ -17,6 +17,7 @@ const COTIZACION_LIST_SELECT = {
   id: true,
   numCotizacion: true,
   fecha: true,
+  marcaDeTiempo: true,
   medico: true,
   cirugia: true,
   status: true,
@@ -52,13 +53,32 @@ function resolveNombreUsuario(usuario: { nombreCompleto: string; correo: string 
   return usuario.correo?.split('@')[0] || null;
 }
 
+// Clic en el encabezado de una columna del listado — "Total" no se puede ordenar acá porque no es
+// una columna real (se calcula sumando los ítems + descuentos/impuestos después de la consulta,
+// ver computeTotalCotizacion). Sin sortBy, se mantiene el orden por defecto (más reciente primero).
+function buildCotizacionOrderBy(sortBy: CotizacionSortField | undefined, sortOrder: 'asc' | 'desc' | undefined): Prisma.CotizacionOrderByWithRelationInput {
+  const order = sortOrder ?? 'asc';
+  switch (sortBy) {
+    case 'numCotizacion': return { numCotizacion: order };
+    case 'fecha': return { fecha: order };
+    case 'marcaDeTiempo': return { marcaDeTiempo: order };
+    case 'medico': return { medico: order };
+    case 'cirugia': return { cirugia: order };
+    case 'usuario': return { usuario: { nombreCompleto: order } };
+    case 'hospital': return { hospital: { nombreCompleto: order } };
+    case 'sede': return { sede: { nombre: order } };
+    default: return { marcaDeTiempo: 'desc' };
+  }
+}
+
 @Injectable()
 export class CotizacionesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: CotizacionQueryDto) {
-    const { page = 1, limit = 300, search, dateFrom, dateTo } = query;
+    const { page = 1, limit = 300, search, dateFrom, dateTo, sortBy, sortOrder } = query;
     const skip = (page - 1) * limit;
+    const orderBy = buildCotizacionOrderBy(sortBy, sortOrder);
 
     // "Eliminar" una cotización solo la desactiva (soft-delete) — el listado nunca debe mostrar
     // las inactivas, aunque el registro se conserve en la base de datos.
@@ -91,7 +111,7 @@ export class CotizacionesService {
         where,
         skip,
         take: limit,
-        orderBy: { marcaDeTiempo: 'desc' },
+        orderBy,
         select: COTIZACION_LIST_SELECT,
       }),
       this.prisma.cotizacion.count({ where }),
@@ -112,6 +132,7 @@ export class CotizacionesService {
       id: c.id,
       numCotizacion: c.numCotizacion,
       fecha: c.fecha,
+      marcaDeTiempo: c.marcaDeTiempo,
       medico: c.medico,
       cirugia: c.cirugia,
       status: c.status,
@@ -136,7 +157,9 @@ export class CotizacionesService {
       where: { id },
       select: {
         ...COTIZACION_LIST_SELECT,
-        marcaDeTiempo: true,
+        // Sobreescribe el "hospital" del select compartido con la lista — acá también hace falta
+        // su grupoId, para saber si algún consumo debe mostrarse con su nombre/referencia especial.
+        hospital: { select: { nombreCompleto: true, grupoId: true } },
         dirigidoA: true,
         hospitalId: true,
         cubrimientoId: true,
@@ -162,6 +185,7 @@ export class CotizacionesService {
         contadorPaquetes: true,
         nivel: true,
         firma: true,
+        programacionId: true,
       },
     });
     if (!c) return null;
@@ -173,6 +197,7 @@ export class CotizacionesService {
         select: {
           id: true,
           referencia: true,
+          descripcion: true,
           cantidad: true,
           valorUnitario: true,
           valor: true,
@@ -187,6 +212,40 @@ export class CotizacionesService {
         select: { id: true, numRemision: true, estado: true },
       }),
     ]);
+
+    // Una cotización se enlaza a lo más a una programación (ver programacionId en Cotizacion) —
+    // no a varias, aunque una misma programación sí pueda tener varias cotizaciones (relación
+    // inversa que ya se muestra en el detalle de Programación).
+    const programacionAsociada = c.programacionId
+      ? await this.prisma.programacion.findUnique({
+          where: { id: c.programacionId },
+          select: {
+            id: true,
+            numProgram: true,
+            fechaQx: true,
+            horaQx: true,
+            sede: { select: { nombre: true } },
+            hospital: { select: { nombre: true } },
+            medicos: { select: { medico: { select: { nombreCompleto: true } } } },
+          },
+        })
+      : null;
+
+    // Qué consumos están mostrando la referencia/nombre especial del grupo del hospital (para
+    // marcarlo en pantalla) — no se infiere comparando contra el producto actual (podría cambiar
+    // de nombre después) sino chequeando si ese producto+grupo todavía tiene un especial vigente.
+    const grupoId = c.hospital?.grupoId ?? null;
+    const productoIdsConEspecial = new Set<string>();
+    if (grupoId) {
+      const productoIds = [...new Set(detalles.map(d => d.productoId).filter((x): x is string => !!x))];
+      if (productoIds.length > 0) {
+        const [refs, nombres] = await this.prisma.$transaction([
+          this.prisma.referenciaEspecial.findMany({ where: { grupoId, productoId: { in: productoIds } }, select: { productoId: true } }),
+          this.prisma.nombreProductoEspecial.findMany({ where: { grupoId, productoId: { in: productoIds } }, select: { productoId: true } }),
+        ]);
+        [...refs, ...nombres].forEach(r => { if (r.productoId) productoIdsConEspecial.add(r.productoId); });
+      }
+    }
 
     return {
       id: c.id,
@@ -229,15 +288,25 @@ export class CotizacionesService {
         id: d.id,
         productoId: d.productoId,
         referencia: d.referencia,
-        descripcion: d.producto?.nombre ?? null,
+        descripcion: d.descripcion ?? d.producto?.nombre ?? null,
         sistema: d.producto?.sistema?.sistema ?? null,
         hospital: d.hospital?.nombreCompleto ?? null,
         cantidad: d.cantidad,
         valorUnitario: d.valorUnitario,
         valor: d.valor,
         observaciones: d.observaciones,
+        esEspecial: d.productoId ? productoIdsConEspecial.has(d.productoId) : false,
       })),
       remisionesAsociadas: remisiones.map(r => ({ id: r.id, numRemision: r.numRemision, estado: r.estado })),
+      programacionAsociada: programacionAsociada && {
+        id: programacionAsociada.id,
+        numProgram: programacionAsociada.numProgram,
+        fechaQx: programacionAsociada.fechaQx,
+        horaQx: programacionAsociada.horaQx,
+        sede: programacionAsociada.sede?.nombre ?? null,
+        hospital: programacionAsociada.hospital?.nombre ?? null,
+        medicos: programacionAsociada.medicos.map(m => m.medico.nombreCompleto),
+      },
     };
   }
 
@@ -450,10 +519,12 @@ export class CotizacionesService {
     return productoIds.map(id => ({ productoId: id, precio: precioPorProducto.get(id) ?? null }));
   }
 
-  // tarifaId se usa cuando todavía no existe la cotización (se está creando) y ya se conoce la
-  // tarifa elegida en el formulario; cotizacionId se usa para una cotización ya guardada. Si se
-  // pasan ambos, tarifaId gana (evita un round-trip extra a buscar la cotización).
-  async searchProductos(search?: string, cotizacionId?: string, tarifaId?: string) {
+  // tarifaId/hospitalId se usan cuando todavía no existe la cotización (se está creando) y ya se
+  // conocen la tarifa/el hospital elegidos en el formulario; cotizacionId se usa para una
+  // cotización ya guardada, de ahí se resuelve tanto la tarifa como el hospital. Si se pasan
+  // ambos, el valor explícito (tarifaId/hospitalId) gana — evita un round-trip extra a buscar la
+  // cotización.
+  async searchProductos(search?: string, cotizacionId?: string, tarifaId?: string, hospitalId?: string) {
     const searchTerm = search?.trim();
     const productosRaw = await this.prisma.producto.findMany({
       where: {
@@ -476,8 +547,46 @@ export class CotizacionesService {
     });
     const productos = productosRaw.map(p => ({ id: p.id, nombre: p.nombre, referencia: p.referencia, sistema: p.sistema?.sistema ?? null }));
 
-    if (productos.length === 0) {
-      return productos.map(p => ({ ...p, precioSugerido: null as number | null }));
+    // Si el hospital de la cotización pertenece a un grupo con referencia/nombre especial para
+    // alguno de estos productos, se marca acá para que el buscador lo muestre ANTES de agregarlo
+    // (ver también resolveProductoDisplay, que es quien realmente lo aplica al guardar el consumo).
+    let especialesPorProducto = new Map<string, { referenciaEspecial: string | null; nombreEspecial: string | null }>();
+    if ((hospitalId || cotizacionId) && productos.length > 0) {
+      let grupoId: string | null = null;
+      if (hospitalId) {
+        const hospital = await this.prisma.tercero.findUnique({ where: { id: hospitalId }, select: { grupoId: true } });
+        grupoId = hospital?.grupoId ?? null;
+      } else if (cotizacionId) {
+        const cotizacionHospital = await this.prisma.cotizacion.findUnique({
+          where: { id: cotizacionId },
+          select: { hospital: { select: { grupoId: true } } },
+        });
+        grupoId = cotizacionHospital?.hospital?.grupoId ?? null;
+      }
+      if (grupoId) {
+        const productoIds = productos.map(p => p.id);
+        const [refs, nombres] = await this.prisma.$transaction([
+          this.prisma.referenciaEspecial.findMany({ where: { grupoId, productoId: { in: productoIds } }, select: { productoId: true, referencia: true } }),
+          this.prisma.nombreProductoEspecial.findMany({ where: { grupoId, productoId: { in: productoIds } }, select: { productoId: true, nombreEspecial: true } }),
+        ]);
+        for (const r of refs) {
+          if (!r.productoId) continue;
+          especialesPorProducto.set(r.productoId, { ...(especialesPorProducto.get(r.productoId) ?? { referenciaEspecial: null, nombreEspecial: null }), referenciaEspecial: r.referencia });
+        }
+        for (const n of nombres) {
+          if (!n.productoId) continue;
+          especialesPorProducto.set(n.productoId, { ...(especialesPorProducto.get(n.productoId) ?? { referenciaEspecial: null, nombreEspecial: null }), nombreEspecial: n.nombreEspecial });
+        }
+      }
+    }
+    const productosConEspecial = productos.map(p => ({
+      ...p,
+      referenciaEspecial: especialesPorProducto.get(p.id)?.referenciaEspecial ?? null,
+      nombreEspecial: especialesPorProducto.get(p.id)?.nombreEspecial ?? null,
+    }));
+
+    if (productosConEspecial.length === 0) {
+      return productosConEspecial.map(p => ({ ...p, precioSugerido: null as number | null }));
     }
 
     let subtarifaId = tarifaId;
@@ -489,16 +598,45 @@ export class CotizacionesService {
       subtarifaId = cotizacion?.tarifaId ?? undefined;
     }
     if (!subtarifaId) {
-      return productos.map(p => ({ ...p, precioSugerido: null as number | null }));
+      return productosConEspecial.map(p => ({ ...p, precioSugerido: null as number | null }));
     }
 
     const listasPrecio = await this.prisma.listaPrecio.findMany({
-      where: { subtarifaId, productoId: { in: productos.map(p => p.id) } },
+      where: { subtarifaId, productoId: { in: productosConEspecial.map(p => p.id) } },
       select: { productoId: true, precio: true },
     });
     const precioPorProducto = new Map(listasPrecio.map(lp => [lp.productoId, lp.precio]));
 
-    return productos.map(p => ({ ...p, precioSugerido: precioPorProducto.get(p.id) ?? null }));
+    return productosConEspecial.map(p => ({ ...p, precioSugerido: precioPorProducto.get(p.id) ?? null }));
+  }
+
+  // Si el hospital de la cotización pertenece a un grupo (ver TerceroGrupo) que tiene su propia
+  // referencia/nombre para este producto (ver ReferenciaEspecial / NombreProductoEspecial), esos
+  // valores se usan en vez de los estándar del producto — así ese hospital ve el consumo con la
+  // referencia/nombre que él mismo maneja internamente.
+  private async resolveProductoDisplay(productoId: string, hospitalId: string | null | undefined) {
+    const producto = await this.prisma.producto.findUnique({
+      where: { id: productoId },
+      select: { referencia: true, nombre: true },
+    });
+
+    let referencia = producto?.referencia ?? null;
+    let descripcion = producto?.nombre ?? null;
+
+    const grupoId = hospitalId
+      ? (await this.prisma.tercero.findUnique({ where: { id: hospitalId }, select: { grupoId: true } }))?.grupoId
+      : null;
+
+    if (grupoId) {
+      const [refEspecial, nombreEspecial] = await this.prisma.$transaction([
+        this.prisma.referenciaEspecial.findFirst({ where: { productoId, grupoId }, select: { referencia: true } }),
+        this.prisma.nombreProductoEspecial.findFirst({ where: { productoId, grupoId }, select: { nombreEspecial: true } }),
+      ]);
+      if (refEspecial?.referencia) referencia = refEspecial.referencia;
+      if (nombreEspecial?.nombreEspecial) descripcion = nombreEspecial.nombreEspecial;
+    }
+
+    return { referencia, descripcion };
   }
 
   async createItem(cotizacionId: string, dto: CreateDetCotizaDto, usuarioId?: string) {
@@ -508,10 +646,7 @@ export class CotizacionesService {
     });
     if (!cotizacion) throw new NotFoundException('Cotización no encontrada');
 
-    const producto = await this.prisma.producto.findUnique({
-      where: { id: dto.productoId },
-      select: { referencia: true },
-    });
+    const { referencia, descripcion } = await this.resolveProductoDisplay(dto.productoId, cotizacion.hospitalId);
 
     const usuario = usuarioId
       ? await this.prisma.tercero.findUnique({ where: { id: usuarioId }, select: { nombreCompleto: true } })
@@ -525,7 +660,8 @@ export class CotizacionesService {
         cotizacionId,
         marcaDeTiempo: nowMexico(),
         hospitalId: cotizacion.hospitalId,
-        referencia: producto?.referencia ?? null,
+        referencia,
+        descripcion,
         productoId: dto.productoId,
         cantidad: dto.cantidad,
         valorUnitario: dto.valorUnitario,
@@ -538,19 +674,17 @@ export class CotizacionesService {
   }
 
   async updateItem(itemId: string, dto: UpdateDetCotizaDto) {
-    const item = await this.prisma.detCotiza.findUnique({ where: { id: itemId }, select: { id: true } });
+    const item = await this.prisma.detCotiza.findUnique({ where: { id: itemId }, select: { id: true, hospitalId: true } });
     if (!item) throw new NotFoundException('Ítem no encontrado');
 
-    const producto = await this.prisma.producto.findUnique({
-      where: { id: dto.productoId },
-      select: { referencia: true },
-    });
+    const { referencia, descripcion } = await this.resolveProductoDisplay(dto.productoId, item.hospitalId);
 
     return this.prisma.detCotiza.update({
       where: { id: itemId },
       data: {
         productoId: dto.productoId,
-        referencia: producto?.referencia ?? null,
+        referencia,
+        descripcion,
         cantidad: dto.cantidad,
         valorUnitario: dto.valorUnitario,
         valor: dto.cantidad * dto.valorUnitario,
@@ -612,21 +746,18 @@ export class CotizacionesService {
     throw new Error('No se pudo generar un ID único para el ítem de cotización');
   }
 
-  // Las cotizaciones antiguas tienen id tipo "CT-" + hex aleatorio (8 caracteres, pueden incluir
-  // a-f) — el formato nuevo es "CT-" + 8 dígitos consecutivos. Se filtra con esa regex exacta en
-  // vez de un simple startsWith('CT-'), porque un id viejo como "CT-05f3a1b2" igual empieza con
-  // dígitos y un parseInt ingenuo lo leería como si fuera un número de cotización real.
+  // El folio sale de una sequence dedicada (cotizacion_folio_seq, ver migración
+  // add_cotizacion_folio_seq) en vez de parsear el id de texto más alto — algunos ids viejos
+  // migrados de AppSheet son hexadecimal aleatorio (ej. "CT-05f3a1b2") y por azar caen en puros
+  // dígitos (ej. "CT-98365894"), lo que antes se confundía con un folio nuevo real y disparaba el
+  // contador a un número gigante. La sequence es independiente de esos ids y siempre arranca en 1.
   private async generateCotizacionId(): Promise<string> {
-    const [last] = await this.prisma.$queryRaw<{ id: string }[]>`
-      SELECT id FROM cotizaciones WHERE id ~ '^CT-[0-9]{8}$' ORDER BY id DESC LIMIT 1
+    const [{ nextval }] = await this.prisma.$queryRaw<{ nextval: string }[]>`
+      SELECT nextval('cotizacion_folio_seq')::text AS nextval
     `;
-    const nextNum = last ? Number.parseInt(last.id.replace('CT-', ''), 10) + 1 : 1;
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const id = `CT-${String(nextNum + attempt).padStart(8, '0')}`;
-      const exists = await this.prisma.cotizacion.findUnique({ where: { id }, select: { id: true } });
-      if (!exists) return id;
-    }
-    throw new Error('No se pudo generar un ID único para la cotización');
+    const id = `CT-${nextval.padStart(8, '0')}`;
+    const exists = await this.prisma.cotizacion.findUnique({ where: { id }, select: { id: true } });
+    if (exists) return this.generateCotizacionId();
+    return id;
   }
 }

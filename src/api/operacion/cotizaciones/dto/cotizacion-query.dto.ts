@@ -1,6 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
+
+export const COTIZACION_SORT_FIELDS = ['numCotizacion', 'fecha', 'marcaDeTiempo', 'usuario', 'hospital', 'medico', 'cirugia', 'sede'] as const;
+export type CotizacionSortField = (typeof COTIZACION_SORT_FIELDS)[number];
 
 export class CotizacionQueryDto {
   @ApiPropertyOptional({ default: 1 })
@@ -22,4 +25,12 @@ export class CotizacionQueryDto {
   @ApiPropertyOptional()
   @IsOptional() @IsString()
   dateTo?: string;
+
+  @ApiPropertyOptional({ enum: COTIZACION_SORT_FIELDS, description: 'Columna por la que ordenar el listado (clic en el encabezado de la tabla)' })
+  @IsOptional() @IsIn(COTIZACION_SORT_FIELDS)
+  sortBy?: CotizacionSortField;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'] })
+  @IsOptional() @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc';
 }

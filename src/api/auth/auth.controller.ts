@@ -16,6 +16,7 @@ import { CambiarPasswordInicialDto } from './dto/cambiar-password-inicial.dto';
 import { OlvidePasswordDto } from './dto/olvide-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { MeResponseDto } from './dto/me-response.dto';
+import { GuardarFirmaDto } from './dto/guardar-firma.dto';
 import { PendingTokenDto } from './dto/pending-token.dto';
 import { VerificarCodigoDto } from './dto/verificar-codigo.dto';
 import { TotpSetupResponseDto } from './dto/totp-setup-response.dto';
@@ -105,5 +106,22 @@ export class AuthController {
   async me(@Req() req: Request): Promise<MeResponseDto> {
     const user = req['user'] as { sub: string };
     return this.authService.me(user.sub);
+  }
+
+  @Get('firma')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Obtiene la firma personal guardada del usuario autenticado (null si nunca la configuró)' })
+  async obtenerFirma(@Req() req: Request): Promise<{ firma: string | null }> {
+    const user = req['user'] as { sub: string };
+    return this.authService.obtenerFirma(user.sub);
+  }
+
+  @Post('firma')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Guarda (o reemplaza) la firma personal del usuario autenticado' })
+  async guardarFirma(@Req() req: Request, @Body() dto: GuardarFirmaDto): Promise<{ firma: string }> {
+    const user = req['user'] as { sub: string };
+    return this.authService.guardarFirma(user.sub, dto.firma);
   }
 }

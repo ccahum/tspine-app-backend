@@ -27,4 +27,7 @@ export class MeResponseDto {
 
   @ApiProperty()
   sedeId: string | null;
+
+  @ApiProperty()
+  tieneFirma: boolean;
 }

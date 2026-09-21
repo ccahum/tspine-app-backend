@@ -3,6 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 export class ProgramacionListItemDto {
   @ApiProperty() id: string;
   @ApiProperty() numProgram: string | null;
+  @ApiProperty() createdAt: Date;
   @ApiProperty() fechaQx: Date | null;
   @ApiProperty() horaQx: string | null;
   @ApiProperty() sede: string | null;

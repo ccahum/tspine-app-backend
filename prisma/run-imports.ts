@@ -35,6 +35,8 @@ const STEPS = [
   { label: 'Import Productos',       script: 'import-productos' },        // necesita terceros, sistemas, marcas
   { label: 'Import Listas de Precio', script: 'import-listas-precio' },   // necesita subtarifas (seed catálogos), productos
   { label: 'Import Precios Especiales', script: 'import-precios-especiales' }, // necesita productos, terceros
+  { label: 'Import Referencias Especiales',       script: 'import-referencias-especiales' },        // necesita productos; crea grupos de terceros sobre la marcha
+  { label: 'Import Nombres Productos Especiales', script: 'import-nombres-productos-especiales' },   // necesita productos; crea grupos de terceros sobre la marcha
   { label: 'Import Detalle Paquetes',   script: 'import-detallepaquetes' },    // necesita paquetes de cotización (seed catálogos), productos
   { label: 'Import Cotizaciones',       script: 'import-cotizacion' },         // necesita terceros, sedes, subtarifas, paquetes, detalle de paquetes
   { label: 'Import Detalle Cotización', script: 'import-det-cotiza' },         // necesita cotizaciones, terceros, productos

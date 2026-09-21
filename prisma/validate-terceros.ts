@@ -413,7 +413,7 @@ async function main() {
     { campo: 'ciudadId',     csvCount: uniq.filter(g => { const v = getCol(g[0], 'CIUDAD')?.trim(); return !!v && v !== '--' && v !== '-' && v.length > 1; }).length, dbQuery: () => prisma.tercero.count({ where: { ciudadId: { not: null } } }) },
     { campo: 'perfilId',     csvCount: uniq.filter(g => !!getCol(g[0], 'PERFIL')?.trim()).length,       dbQuery: () => prisma.tercero.count({ where: { perfilId: { not: null } } }) },
     // Sedes tienen GRUPO en CSV pero no se importan como terceros → excluirlas del conteo
-    { campo: 'grupo',        csvCount: uniq.filter(g => !!getCol(g[0], 'GRUPO')?.trim() && parseBool(getCol(g[0], 'SEDE?')) !== true).length, dbQuery: () => prisma.tercero.count({ where: { grupo: { not: null } } }) },
+    { campo: 'grupoId',      csvCount: uniq.filter(g => !!getCol(g[0], 'GRUPO')?.trim() && parseBool(getCol(g[0], 'SEDE?')) !== true).length, dbQuery: () => prisma.tercero.count({ where: { grupoId: { not: null } } }) },
     { campo: 'observaciones',csvCount: uniq.filter(g => !!getCol(g[0], 'OBSERVACIONES')?.trim()).length, dbQuery: () => prisma.tercero.count({ where: { observaciones: { not: null } } }) },
     { campo: 'correo',       csvCount: uniq.filter(g => !!cleanCorreo(getCol(g[0], 'CORREO'))).length,  dbQuery: () => prisma.tercero.count({ where: { correo:   { not: null } } }) },
   ];

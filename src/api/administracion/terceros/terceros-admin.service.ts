@@ -52,6 +52,21 @@ function mapTercero(t: TerceroRow) {
 export class TercerosAdminService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // El catálogo de grupos se llena solo: si el nombre no existe todavía, se crea (igual que
+  // ciudad/estado/país en el import de Terceros) — así el admin puede escribir un grupo nuevo
+  // sin necesitar una pantalla aparte para darlo de alta primero.
+  private async resolveGrupoId(nombre: string | undefined): Promise<string | null | undefined> {
+    if (nombre === undefined) return undefined;
+    const trimmed = nombre.trim();
+    if (!trimmed) return null;
+    const grupo = await this.prisma.terceroGrupo.upsert({
+      where: { nombre: trimmed },
+      update: {},
+      create: { nombre: trimmed },
+    });
+    return grupo.nombre;
+  }
+
   async findAll(query: TerceroQueryDto) {
     const { page = 1, limit = 50, search, clasificacion } = query;
     const skip = (page - 1) * limit;
@@ -106,7 +121,7 @@ export class TercerosAdminService {
         creadoPor: true,
         creadoEn: true,
         mir: true,
-        grupo: true,
+        grupo: { select: { nombre: true } },
         ciudadId: true,
         estadoId: true,
         paisId: true,
@@ -151,7 +166,7 @@ export class TercerosAdminService {
       creadoPor: tercero.creadoPor,
       creadoEn: tercero.creadoEn,
       mir: tercero.mir,
-      grupo: !!tercero.grupo,
+      grupo: tercero.grupo?.nombre ?? null,
       ciudadId: tercero.ciudadId,
       estadoId: tercero.estadoId,
       paisId: tercero.paisId,
@@ -186,7 +201,7 @@ export class TercerosAdminService {
   }
 
   async getCatalogos() {
-    const [cargos, ciudades, estados, paises, regimenesFiscales, usosCfdi, bancos] = await this.prisma.$transaction([
+    const [cargos, ciudades, estados, paises, regimenesFiscales, usosCfdi, bancos, grupos] = await this.prisma.$transaction([
       this.prisma.cargo.findMany({ select: { id: true, nombre: true }, orderBy: { nombre: 'asc' } }),
       this.prisma.ciudad.findMany({ select: { id: true, nombre: true, estadoId: true }, orderBy: { nombre: 'asc' } }),
       this.prisma.estado.findMany({ select: { id: true, nombre: true, paisId: true }, orderBy: { nombre: 'asc' } }),
@@ -194,8 +209,9 @@ export class TercerosAdminService {
       this.prisma.regimenFiscal.findMany({ select: { id: true, descripcion: true }, orderBy: { descripcion: 'asc' } }),
       this.prisma.usoCfdi.findMany({ select: { id: true, descripcion: true }, orderBy: { descripcion: 'asc' } }),
       this.prisma.banco.findMany({ select: { id: true, nombre: true }, orderBy: { nombre: 'asc' } }),
+      this.prisma.terceroGrupo.findMany({ select: { nombre: true }, orderBy: { nombre: 'asc' } }),
     ]);
-    return { cargos, ciudades, estados, paises, regimenesFiscales, usosCfdi, bancos };
+    return { cargos, ciudades, estados, paises, regimenesFiscales, usosCfdi, bancos, grupos: grupos.map(g => g.nombre) };
   }
 
   async createTercero(dto: CreateTerceroDto, creadoPorId: string) {
@@ -209,6 +225,8 @@ export class TercerosAdminService {
       select: { id: true },
     });
     if (existente) throw new ConflictException('Ya existe un tercero registrado con este nombre completo.');
+
+    const grupoId = await this.resolveGrupoId(dto.grupo);
 
     const tercero = await this.prisma.tercero.create({
       data: {
@@ -225,9 +243,7 @@ export class TercerosAdminService {
         paisId: dto.paisId,
         observaciones: dto.observaciones,
         mir: dto.mir ?? false,
-        // "GRUPO?" en Datos de Facturación es un toggle Sí/No aparte, no una ClasificacionTercero
-        // (confirmado con el usuario) — el campo grupo en el schema es texto libre legado.
-        grupo: dto.grupo ? 'Sí' : null,
+        grupoId: grupoId ?? null,
         creadoPor: creador.correo,
         creadoEn: nowMexico(),
         clasificaciones: dto.clasificaciones?.length
@@ -255,6 +271,8 @@ export class TercerosAdminService {
     const existing = await this.prisma.tercero.findUnique({ where: { id }, select: { id: true } });
     if (!existing) throw new NotFoundException('Tercero no encontrado');
 
+    const grupoId = await this.resolveGrupoId(dto.grupo);
+
     const tercero = await this.prisma.tercero.update({
       where: { id },
       data: {
@@ -271,7 +289,7 @@ export class TercerosAdminService {
         paisId: dto.paisId,
         observaciones: dto.observaciones,
         mir: dto.mir,
-        grupo: dto.grupo === undefined ? undefined : (dto.grupo ? 'Sí' : null),
+        grupoId,
         activo: dto.activo,
         clasificaciones: dto.clasificaciones !== undefined
           ? { deleteMany: {}, create: dto.clasificaciones.map(c => ({ clasificacion: c })) }
