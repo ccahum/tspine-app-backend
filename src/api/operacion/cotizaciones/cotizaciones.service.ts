@@ -673,6 +673,79 @@ export class CotizacionesService {
     });
   }
 
+  // Mismo resultado que llamar createItem() una vez por ítem, pero resolviendo lo que es común a
+  // toda la cotización (cotización, usuario, grupo del hospital) UNA sola vez, y los productos +
+  // sus posibles referencia/nombre especiales EN LOTE (una consulta con IN en vez de una por
+  // producto) — createItem() en serie, ítem por ítem, llegó a disparar ~7-8 consultas secuenciales
+  // POR ítem, lo que hacía sentir lenta la creación de una cotización con varios consumos (ej. las
+  // que vienen de un paquete). El orden se conserva dándole a cada ítem un marcaDeTiempo creciente
+  // (mismo campo por el que se ordena el listado), un milisegundo después del anterior, en el mismo
+  // orden en que llegaron en el arreglo.
+  async createItemsBulk(cotizacionId: string, dtos: CreateDetCotizaDto[], usuarioId?: string) {
+    const cotizacion = await this.prisma.cotizacion.findUnique({
+      where: { id: cotizacionId },
+      select: { hospitalId: true, sede: { select: { nombre: true } } },
+    });
+    if (!cotizacion) throw new NotFoundException('Cotización no encontrada');
+
+    const usuario = usuarioId
+      ? await this.prisma.tercero.findUnique({ where: { id: usuarioId }, select: { nombreCompleto: true } })
+      : null;
+
+    const grupoId = cotizacion.hospitalId
+      ? (await this.prisma.tercero.findUnique({ where: { id: cotizacion.hospitalId }, select: { grupoId: true } }))?.grupoId ?? null
+      : null;
+
+    const productoIds = [...new Set(dtos.map(d => d.productoId))];
+    const productos = await this.prisma.producto.findMany({
+      where: { id: { in: productoIds } },
+      select: { id: true, referencia: true, nombre: true },
+    });
+    const productoById = new Map(productos.map(p => [p.id, p]));
+
+    const especialesPorProducto = new Map<string, { referencia?: string | null; nombreEspecial?: string | null }>();
+    if (grupoId) {
+      const [refsEspeciales, nombresEspeciales] = await this.prisma.$transaction([
+        this.prisma.referenciaEspecial.findMany({ where: { productoId: { in: productoIds }, grupoId }, select: { productoId: true, referencia: true } }),
+        this.prisma.nombreProductoEspecial.findMany({ where: { productoId: { in: productoIds }, grupoId }, select: { productoId: true, nombreEspecial: true } }),
+      ]);
+      for (const r of refsEspeciales) {
+        if (!r.productoId) continue;
+        especialesPorProducto.set(r.productoId, { ...especialesPorProducto.get(r.productoId), referencia: r.referencia });
+      }
+      for (const n of nombresEspeciales) {
+        if (!n.productoId) continue;
+        especialesPorProducto.set(n.productoId, { ...especialesPorProducto.get(n.productoId), nombreEspecial: n.nombreEspecial });
+      }
+    }
+
+    const ids = await this.generateIds(dtos.length);
+    const base = nowMexico().getTime();
+
+    const data = dtos.map((dto, i) => {
+      const producto = productoById.get(dto.productoId);
+      const especial = especialesPorProducto.get(dto.productoId);
+      return {
+        id: ids[i],
+        cotizacionId,
+        marcaDeTiempo: new Date(base + i),
+        hospitalId: cotizacion.hospitalId,
+        referencia: especial?.referencia ? especial.referencia : (producto?.referencia ?? null),
+        descripcion: especial?.nombreEspecial ? especial.nombreEspecial : (producto?.nombre ?? null),
+        productoId: dto.productoId,
+        cantidad: dto.cantidad,
+        valorUnitario: dto.valorUnitario,
+        valor: dto.cantidad * dto.valorUnitario,
+        observaciones: dto.observaciones,
+        sede: cotizacion.sede?.nombre ?? null,
+        usuario: usuario?.nombreCompleto ?? null,
+      };
+    });
+
+    await this.prisma.detCotiza.createMany({ data });
+    return data;
+  }
+
   async updateItem(itemId: string, dto: UpdateDetCotizaDto) {
     const item = await this.prisma.detCotiza.findUnique({ where: { id: itemId }, select: { id: true, hospitalId: true } });
     if (!item) throw new NotFoundException('Ítem no encontrado');
@@ -744,6 +817,25 @@ export class CotizacionesService {
       if (!exists) return id;
     }
     throw new Error('No se pudo generar un ID único para el ítem de cotización');
+  }
+
+  // Versión en lote de generateId(): en vez de una consulta findUnique por ID candidato, revisa
+  // todos los candidatos de la tanda con un solo findMany + IN. Las colisiones son rarísimas (8
+  // caracteres hexadecimales aleatorios), así que casi siempre resuelve en una sola vuelta.
+  private async generateIds(count: number): Promise<string[]> {
+    const ids = new Set<string>();
+    while (ids.size < count) {
+      const candidatos = Array.from({ length: count - ids.size }, () => randomBytes(4).toString('hex'));
+      const existentes = await this.prisma.detCotiza.findMany({
+        where: { id: { in: candidatos } },
+        select: { id: true },
+      });
+      const existentesSet = new Set(existentes.map(e => e.id));
+      for (const c of candidatos) {
+        if (!existentesSet.has(c)) ids.add(c);
+      }
+    }
+    return Array.from(ids);
   }
 
   // El folio sale de una sequence dedicada (cotizacion_folio_seq, ver migración

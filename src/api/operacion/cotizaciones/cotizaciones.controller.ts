@@ -4,6 +4,7 @@ import { Request } from 'express';
 import { CotizacionesService } from './cotizaciones.service';
 import { CotizacionQueryDto } from './dto/cotizacion-query.dto';
 import { CreateDetCotizaDto } from './dto/create-det-cotiza.dto';
+import { CreateDetCotizaBulkDto } from './dto/create-det-cotiza-bulk.dto';
 import { UpdateDetCotizaDto } from './dto/update-det-cotiza.dto';
 import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
 import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
@@ -127,5 +128,13 @@ export class CotizacionesController {
   createItem(@Param('id') id: string, @Body() dto: CreateDetCotizaDto, @Req() req: Request) {
     const user = req['user'] as { sub: string } | undefined;
     return this.service.createItem(id, dto, user?.sub);
+  }
+
+  @Post(':id/items/bulk')
+  @ApiOperation({ summary: 'Agregar varios ítems (Det_Cotiza) a una cotización de una sola vez, en el orden dado — usado al crear una cotización con varios consumos ya armados (ej. desde un paquete), para no hacer un request por ítem' })
+  @ApiCreatedResponse({ description: 'Ítems creados' })
+  createItemsBulk(@Param('id') id: string, @Body() dto: CreateDetCotizaBulkDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string } | undefined;
+    return this.service.createItemsBulk(id, dto.items, user?.sub);
   }
 }
