@@ -1229,9 +1229,12 @@ export class RemisionesRepositoryService {
     });
   }
 
-  async searchProductos(search?: string) {
+  async searchProductos(search?: string, tarifaId?: string) {
     const productos = await this.prisma.producto.findMany({
-      where: search?.trim() ? { nombre: { contains: search, mode: 'insensitive' as const } } : {},
+      where: {
+        ...(search?.trim() ? { nombre: { contains: search, mode: 'insensitive' as const } } : {}),
+        ...(tarifaId ? { tarifasDenegadas: { none: { tarifaId } } } : {}),
+      },
       select: {
         id: true,
         nombre: true,

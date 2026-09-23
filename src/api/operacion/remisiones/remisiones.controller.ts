@@ -223,8 +223,8 @@ export class RemisionesController {
 
   @Get('productos')
   @ApiOperation({ summary: 'Buscar Productos por nombre (incluye precios por cubrimiento)' })
-  searchProductos(@Query('search') search?: string) {
-    return this.service.searchProductos(search);
+  searchProductos(@Query('search') search?: string, @Query('tarifaId') tarifaId?: string) {
+    return this.service.searchProductos(search, tarifaId);
   }
 
   @Get('almacenes')

@@ -515,6 +515,7 @@ model Tarifa {
   listasPrecio ListaPrecio[]
   cotizacionesCubrimiento Cotizacion[] @relation("CotizacionCubrimiento")
   cotizacionesTarifa      Cotizacion[] @relation("CotizacionTarifa")
+  productosDenegados      ProductoTarifaDenegada[]
 
   @@index([orden])
   @@map("subtarifas")
@@ -1102,7 +1103,6 @@ model Producto {
   manejaRequisiciones      Boolean   @default(false) @map("maneja_requisiciones")
   manejaLote               Boolean   @default(false) @map("maneja_lote")
   actualizar               Boolean?
-  denegar                  Boolean?
   conBaseAId               String?   @map("con_base_a_id")
   anosVidaUtil             Decimal?  @map("anos_vida_util")            @db.Decimal(10, 2)
   min                      Int?
@@ -1144,9 +1144,25 @@ model Producto {
   detCotiza          DetCotiza[]
   referenciasEspeciales ReferenciaEspecial[]
   nombresEspeciales     NombreProductoEspecial[]
+  tarifasDenegadas      ProductoTarifaDenegada[]
 
   @@index([nombre])
   @@map("productos")
+}
+
+// DENEGAR en el CSV de Productos: no es un booleano, trae ids de Tarifa/Subtarifa separados por
+// coma (ej. "1A1 , Orgoa") — el producto no se puede cotizar bajo esas tarifas. Mismo patrón que
+// ReferenciaEspecial/NombreProductoEspecial (una fila por combinación), no una relación
+// implícita, para poder truncar/reimportar igual que esas dos.
+model ProductoTarifaDenegada {
+  id         String  @id
+  productoId String? @map("producto_id")
+  tarifaId   String? @map("tarifa_id")
+
+  producto Producto? @relation(fields: [productoId], references: [id])
+  tarifa   Tarifa?   @relation(fields: [tarifaId],    references: [id])
+
+  @@map("producto_tarifas_denegadas")
 }
 
 model Factura {

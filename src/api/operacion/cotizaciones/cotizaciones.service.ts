@@ -526,9 +526,22 @@ export class CotizacionesService {
   // cotización.
   async searchProductos(search?: string, cotizacionId?: string, tarifaId?: string, hospitalId?: string) {
     const searchTerm = search?.trim();
+
+    // Se resuelve antes del findMany (y no donde antes, después de traer los productos) porque
+    // también se usa para excluir del listado los productos que tengan esta tarifa en DENEGAR.
+    let subtarifaId = tarifaId;
+    if (!subtarifaId && cotizacionId) {
+      const cotizacion = await this.prisma.cotizacion.findUnique({
+        where: { id: cotizacionId },
+        select: { tarifaId: true },
+      });
+      subtarifaId = cotizacion?.tarifaId ?? undefined;
+    }
+
     const productosRaw = await this.prisma.producto.findMany({
       where: {
         categoriaId: { in: CATEGORIAS_COTIZABLES },
+        ...(subtarifaId ? { tarifasDenegadas: { none: { tarifaId: subtarifaId } } } : {}),
         ...(searchTerm
           ? {
               OR: [
@@ -589,14 +602,6 @@ export class CotizacionesService {
       return productosConEspecial.map(p => ({ ...p, precioSugerido: null as number | null }));
     }
 
-    let subtarifaId = tarifaId;
-    if (!subtarifaId && cotizacionId) {
-      const cotizacion = await this.prisma.cotizacion.findUnique({
-        where: { id: cotizacionId },
-        select: { tarifaId: true },
-      });
-      subtarifaId = cotizacion?.tarifaId ?? undefined;
-    }
     if (!subtarifaId) {
       return productosConEspecial.map(p => ({ ...p, precioSugerido: null as number | null }));
     }

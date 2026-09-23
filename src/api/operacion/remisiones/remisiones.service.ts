@@ -176,8 +176,8 @@ export class RemisionesService {
     return this.repo.searchLotes(search);
   }
 
-  searchProductos(search?: string) {
-    return this.repo.searchProductos(search);
+  searchProductos(search?: string, tarifaId?: string) {
+    return this.repo.searchProductos(search, tarifaId);
   }
 
   createDetRequisicion(dto: CreateDetRequisicionDto) {

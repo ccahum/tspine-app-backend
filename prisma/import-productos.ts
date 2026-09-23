@@ -80,7 +80,9 @@ function parseIntConComas(val: string | undefined): number | null {
 
 function parseBool(val: string | undefined): boolean | null {
   if (!val || val.trim() === '') return null;
-  const v = val.trim().toUpperCase();
+  // norm() ya le quita acentos al valor (igual que a los nombres de columna) — "SÍ" con acento
+  // no matcheaba contra 'SI' y se colaba como null en vez de true (visto en la columna DENEGAR).
+  const v = norm(val.trim());
   if (v === 'TRUE' || v === 'SI' || v === 'YES' || v === '1') return true;
   if (v === 'FALSE' || v === 'NO' || v === '0') return false;
   return null;
@@ -133,8 +135,9 @@ async function main() {
   const marcasSet    = new Set((await prisma.marca.findMany({ select: { id: true } })).map(m => m.id));
   const udemsSet     = new Set((await prisma.unidadMedidaSat.findMany({ select: { id: true } })).map(u => u.id));
   const objetosSet   = new Set((await prisma.objetoImpuesto.findMany({ select: { id: true } })).map(o => o.id));
+  const tarifasSet   = new Set((await prisma.tarifa.findMany({ select: { id: true } })).map(t => t.id));
   console.log(`  ✓ ${sistemasSet.size} sistemas   ${categoriasSet.size} categorías   ${marcasSet.size} marcas`);
-  console.log(`  ✓ ${udemsSet.size} unidades de medida   ${objetosSet.size} objetos de impuesto`);
+  console.log(`  ✓ ${udemsSet.size} unidades de medida   ${objetosSet.size} objetos de impuesto   ${tarifasSet.size} tarifas`);
 
   // ── [2/5] Análisis previo ─────────────────────────────────────────────────
   console.log('\n[2/5] Analizando CSV...');
@@ -212,6 +215,9 @@ async function main() {
 
   // ── [3/5] Truncar ─────────────────────────────────────────────────────────
   console.log('\n[3/5] Truncando productos...');
+  // producto_tarifas_denegadas primero: su FK a productos es ON DELETE SET NULL, no CASCADE, así
+  // que truncar productos solo la dejaría con filas huérfanas (producto_id null) en vez de vacía.
+  await prisma.productoTarifaDenegada.deleteMany();
   await prisma.producto.deleteMany();
   console.log('  ✓ Tabla limpia');
 
@@ -225,6 +231,10 @@ async function main() {
   // Guardar CON BASE A para segunda pasada (excluir auto-referencia)
   const conBaseAPendientes: { id: string; conBaseAId: string }[] = [];
   const todosLosIds = new Set(rows.map(r => getCol(r, 'ID PRODUCTO')?.trim()).filter(Boolean) as string[]);
+
+  // DENEGAR se inserta después (necesita que el producto ya exista para la FK).
+  const denegarPendientes: { productoId: string; tarifaId: string }[] = [];
+  const tarifasDenegarNR: UnresolvedMap = new Map();
 
   for (const row of rows) {
     const id = getCol(row, 'ID PRODUCTO')?.trim();
@@ -262,6 +272,21 @@ async function main() {
       conBaseAPendientes.push({ id, conBaseAId: conBaseARaw });
     }
 
+    // DENEGAR: ids de Tarifa separados por coma (ej. "1A1 , Orgoa") — no es un boolean, es la
+    // lista de tarifas bajo las que este producto NO se puede cotizar.
+    const denegarRaw = getCol(row, 'DENEGAR')?.trim();
+    if (denegarRaw) {
+      for (const tokenRaw of denegarRaw.split(',')) {
+        const tarifaToken = tokenRaw.trim();
+        if (!tarifaToken) continue;
+        if (tarifasSet.has(tarifaToken)) {
+          denegarPendientes.push({ productoId: id, tarifaId: tarifaToken });
+        } else {
+          incMap(tarifasDenegarNR, tarifaToken);
+        }
+      }
+    }
+
     try {
       await prisma.producto.create({
         data: {
@@ -290,7 +315,6 @@ async function main() {
           manejaRequisiciones:     boolDef(getCol(row, 'MANEJA REQUISICIONES?'),        false),
           manejaLote:              boolDef(getCol(row, 'MANEJA LOTE?'),                 false),
           actualizar:              parseBool(getCol(row, 'ACTUALIZAR')),
-          denegar:                 parseBool(getCol(row, 'DENEGAR')),
           conBaseAId:              null, // segunda pasada
           anosVidaUtil:            parseDecimal(getCol(row, 'ANOS DE VIDA UTIL')),
           min:                     parseIntConComas(getCol(row, 'MIN')),
@@ -338,6 +362,21 @@ async function main() {
   if (conBaseAOk  > 0) console.log(`  ✓ ${conBaseAOk} referencias resueltas`);
   if (conBaseAErr > 0) console.log(`  ⚠ ${conBaseAErr} referencias no resueltas`);
 
+  // ── Tarifas denegadas (DENEGAR) ──────────────────────────────────────────
+  console.log(`\nImportando tarifas denegadas (${denegarPendientes.length} filas)...`);
+  if (denegarPendientes.length > 0) {
+    await prisma.productoTarifaDenegada.createMany({
+      data: denegarPendientes.map(({ productoId, tarifaId }) => ({
+        id: `${productoId}__${tarifaId}`,
+        productoId,
+        tarifaId,
+      })),
+      skipDuplicates: true,
+    });
+  }
+  console.log(`  ✓ ${denegarPendientes.length} filas insertadas`);
+  printAnalysis('tarifas de DENEGAR', tarifasDenegarNR);
+
   // ── Resumen ───────────────────────────────────────────────────────────────
   console.log('\n' + '═'.repeat(60));
   console.log('  RESUMEN');
@@ -355,6 +394,8 @@ async function main() {
   console.log(`  ⚠ MARCA sin resolver      : ${marcasNR.size}`);
   console.log(`  ⚠ UdeM sin resolver       : ${udemsNR.size}`);
   console.log(`  ⚠ Obj. Impuesto s/resolver: ${objetosNR.size}`);
+  console.log(`  ✓ Tarifas denegadas       : ${denegarPendientes.length}`);
+  console.log(`  ⚠ Tarifas DENEGAR s/resolver: ${tarifasDenegarNR.size}`);
   console.log(`  ❌ Errores                : ${errores.length}`);
 
   if (errores.length > 0) {
