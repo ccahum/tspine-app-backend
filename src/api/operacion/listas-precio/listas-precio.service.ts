@@ -110,7 +110,7 @@ export class ListasPrecioService {
       where: search?.trim() ? { nombre: { contains: search, mode: 'insensitive' as const } } : {},
       select: { id: true, nombre: true, tipoActualizacion: true, tipoCubrimiento: { select: { nombre: true } } },
       orderBy: { orden: 'asc' },
-      take: 20,
+      take: 50,
     });
     return subtarifas.map(s => ({
       id: s.id,
@@ -125,7 +125,7 @@ export class ListasPrecioService {
       where: search?.trim() ? { nombre: { contains: search, mode: 'insensitive' as const } } : {},
       select: { id: true, nombre: true, referencia: true },
       orderBy: { nombre: 'asc' },
-      take: 20,
+      take: 50,
     });
   }
 

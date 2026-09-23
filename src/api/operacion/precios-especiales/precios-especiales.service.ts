@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { PrecioEspecialQueryDto } from './dto/precio-especial-query.dto';
 import { CreatePrecioEspecialDto } from './dto/create-precio-especial.dto';
@@ -45,21 +46,39 @@ export class PreciosEspecialesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async searchProductos(search?: string) {
-    return this.prisma.producto.findMany({
-      where: search?.trim() ? { nombre: { contains: search, mode: 'insensitive' as const } } : {},
-      select: { id: true, nombre: true, referencia: true },
-      orderBy: { nombre: 'asc' },
-      take: 20,
-    });
+    const searchTerm = search?.trim();
+    // Prisma no soporta un equivalente a unaccent() con el query builder normal — se usa SQL
+    // crudo para que "instrumental" también encuentre "instrumêntal" y sea insensible a
+    // mayúsculas/minúsculas Y acentos a la vez (mode:'insensitive' de Prisma solo cubre lo
+    // segundo). Mismo patrón que searchTerceros en cotizaciones.service.ts.
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND unaccent(p.nombre) ILIKE unaccent(${'%' + searchTerm + '%'})`
+      : Prisma.empty;
+
+    return this.prisma.$queryRaw<{ id: string; nombre: string | null; referencia: string | null }[]>`
+      SELECT p.id_producto AS id, p.nombre, p.referencia
+      FROM productos p
+      WHERE true
+      ${searchFilter}
+      ORDER BY p.nombre ASC
+      LIMIT 50
+    `;
   }
 
   async searchContactos(search?: string) {
-    return this.prisma.tercero.findMany({
-      where: search?.trim() ? { nombreCompleto: { contains: search, mode: 'insensitive' as const } } : {},
-      select: { id: true, nombreCompleto: true },
-      orderBy: { nombreCompleto: 'asc' },
-      take: 20,
-    });
+    const searchTerm = search?.trim();
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND unaccent(t.nombre_completo) ILIKE unaccent(${'%' + searchTerm + '%'})`
+      : Prisma.empty;
+
+    return this.prisma.$queryRaw<{ id: string; nombreCompleto: string }[]>`
+      SELECT t.id, t.nombre_completo AS "nombreCompleto"
+      FROM terceros t
+      WHERE true
+      ${searchFilter}
+      ORDER BY t.nombre_completo ASC
+      LIMIT 50
+    `;
   }
 
   async createPrecioEspecial(dto: CreatePrecioEspecialDto) {
