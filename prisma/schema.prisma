@@ -592,12 +592,17 @@ model ViajeVehiculo {
 }
 
 model Perfil {
-  id           String        @id
-  nombre       String
-  reglas       ReglaCrud     @default(READ_ONLY)
-  vistaInicial String?       @map("vista_inicial")
-  vistas       PerfilVista[]
-  terceros     Tercero[]
+  id                String        @id
+  nombre            String
+  reglas            ReglaCrud     @default(READ_ONLY)
+  vistaInicial      String?       @map("vista_inicial")
+  // Si es false (default), el perfil tiene acceso total a todos los módulos/submódulos — igual
+  // que se comportaba toda la app antes de este campo, para no bloquear a nadie existente al
+  // desplegar. Solo cuando se activa a mano desde Administración > Perfiles empieza a filtrarse
+  // por lo que haya en `vistas`.
+  accesoRestringido Boolean       @default(false) @map("acceso_restringido")
+  vistas            PerfilVista[]
+  terceros          Tercero[]
 
   @@map("perfiles")
 }

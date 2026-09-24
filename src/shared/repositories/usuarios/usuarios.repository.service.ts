@@ -9,14 +9,14 @@ export class UsuariosRepositoryService {
   async findByCorreo(correo: string): Promise<Tercero | null> {
     return this.prisma.tercero.findFirst({
       where: { correo },
-      include: { perfil: true, sede: true },
+      include: { perfil: { include: { vistas: true } }, sede: true },
     });
   }
 
   async findById(id: string): Promise<Tercero | null> {
     return this.prisma.tercero.findUnique({
       where: { id },
-      include: { perfil: true, sede: true },
+      include: { perfil: { include: { vistas: true } }, sede: true },
     });
   }
 }

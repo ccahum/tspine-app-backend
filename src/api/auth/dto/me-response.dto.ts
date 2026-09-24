@@ -30,4 +30,13 @@ export class MeResponseDto {
 
   @ApiProperty()
   tieneFirma: boolean;
+
+  @ApiProperty()
+  accesoRestringido: boolean;
+
+  @ApiProperty({ type: [String] })
+  vistas: string[];
+
+  @ApiProperty({ nullable: true })
+  vistaInicial: string | null;
 }

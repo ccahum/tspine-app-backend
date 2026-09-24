@@ -329,6 +329,9 @@ export class AuthService {
       reglas: (usuario as any).perfil?.reglas ?? '',
       sedeId: usuario.sedeId,
       tieneFirma: !!usuario.firma,
+      accesoRestringido: (usuario as any).perfil?.accesoRestringido ?? false,
+      vistas: ((usuario as any).perfil?.vistas ?? []).map((v: any) => v.vistaNombre),
+      vistaInicial: (usuario as any).perfil?.vistaInicial ?? null,
     };
   }
 
@@ -386,6 +389,9 @@ export class AuthService {
         reglas: (usuario as any).perfil?.reglas ?? '',
         sedeId: usuario.sedeId,
         tieneFirma: !!usuario.firma,
+        accesoRestringido: (usuario as any).perfil?.accesoRestringido ?? false,
+        vistas: ((usuario as any).perfil?.vistas ?? []).map((v: any) => v.vistaNombre),
+        vistaInicial: (usuario as any).perfil?.vistaInicial ?? null,
       },
     };
   }

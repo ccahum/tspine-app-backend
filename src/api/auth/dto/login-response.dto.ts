@@ -16,5 +16,8 @@ export class LoginResponseDto {
     reglas: string;
     sedeId: string | null;
     tieneFirma: boolean;
+    accesoRestringido: boolean;
+    vistas: string[];
+    vistaInicial: string | null;
   };
 }

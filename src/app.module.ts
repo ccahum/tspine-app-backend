@@ -5,6 +5,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { MailerModule } from './commons/mailer/mailer.module';
 import { AuthorizationModule } from './commons/authorization/authorization.module';
 import { JwtAuthGuard } from './commons/authorization/guards/jwt-auth.guard';
+import { PerfilAccessGuard } from './commons/authorization/guards/perfil-access.guard';
 import { AuthModule } from './api/auth/auth.module';
 import { ProgramacionesModule } from './api/operacion/programaciones/programaciones.module';
 import { RemisionesModule } from './api/operacion/remisiones/remisiones.module';
@@ -17,6 +18,7 @@ import { BusquedaGlobalModule } from './api/busqueda-global/busqueda-global.modu
 import { NotificacionesModule } from './api/notificaciones/notificaciones.module';
 import { UsuariosAdminModule } from './api/administracion/usuarios/usuarios-admin.module';
 import { TercerosAdminModule } from './api/administracion/terceros/terceros-admin.module';
+import { PerfilesAdminModule } from './api/administracion/perfiles/perfiles-admin.module';
 import { VehiculoCatalogoModule } from './api/vehicular/vehiculo-catalogo/vehiculo-catalogo.module';
 import { ViajeVehiculoModule } from './api/vehicular/viaje-vehiculo/viaje-vehiculo.module';
 
@@ -38,6 +40,7 @@ import { ViajeVehiculoModule } from './api/vehicular/viaje-vehiculo/viaje-vehicu
     NotificacionesModule,
     UsuariosAdminModule,
     TercerosAdminModule,
+    PerfilesAdminModule,
     VehiculoCatalogoModule,
     ViajeVehiculoModule,
   ],
@@ -45,6 +48,10 @@ import { ViajeVehiculoModule } from './api/vehicular/viaje-vehiculo/viaje-vehicu
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PerfilAccessGuard,
     },
   ],
 })
