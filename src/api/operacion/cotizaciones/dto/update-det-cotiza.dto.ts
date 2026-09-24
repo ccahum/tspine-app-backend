@@ -19,4 +19,9 @@ export class UpdateDetCotizaDto {
   @IsOptional()
   @IsString()
   observaciones?: string;
+
+  @ApiPropertyOptional({ description: 'Igual que en CreateDetCotizaDto: si se manda, se usa este hospital (en vez del que ya tenía guardado el ítem) para resolver nombre/referencia especial.' })
+  @IsOptional()
+  @IsString()
+  hospitalId?: string;
 }

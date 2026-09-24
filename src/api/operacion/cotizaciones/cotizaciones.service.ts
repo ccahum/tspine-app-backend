@@ -659,7 +659,12 @@ export class CotizacionesService {
     });
     if (!cotizacion) throw new NotFoundException('Cotización no encontrada');
 
-    const { referencia, descripcion } = await this.resolveProductoDisplay(dto.productoId, cotizacion.hospitalId);
+    // Si el formulario mandó un hospitalId (porque el usuario lo cambió en Editar Cotización pero
+    // todavía no guarda ese cambio), se usa ese para resolver especiales y para el propio consumo
+    // — si no, se cae al que ya está guardado en la cotización (Nueva Cotización, o si no cambió).
+    const hospitalId = dto.hospitalId ?? cotizacion.hospitalId;
+
+    const { referencia, descripcion } = await this.resolveProductoDisplay(dto.productoId, hospitalId);
 
     const usuario = usuarioId
       ? await this.prisma.tercero.findUnique({ where: { id: usuarioId }, select: { nombreCompleto: true } })
@@ -672,7 +677,7 @@ export class CotizacionesService {
         id,
         cotizacionId,
         marcaDeTiempo: nowMexico(),
-        hospitalId: cotizacion.hospitalId,
+        hospitalId,
         referencia,
         descripcion,
         productoId: dto.productoId,
@@ -763,7 +768,13 @@ export class CotizacionesService {
     const item = await this.prisma.detCotiza.findUnique({ where: { id: itemId }, select: { id: true, hospitalId: true } });
     if (!item) throw new NotFoundException('Ítem no encontrado');
 
-    const { referencia, descripcion } = await this.resolveProductoDisplay(dto.productoId, item.hospitalId);
+    // Mismo criterio que createItem: si el formulario manda un hospitalId (porque se cambió el
+    // hospital en Editar Cotización sin guardar todavía), se usa ese en vez del que ya tenía
+    // guardado el ítem — importante para el "sumar cantidad" al re-agregar un producto que ya
+    // estaba en la lista, que internamente pasa por acá.
+    const hospitalId = dto.hospitalId ?? item.hospitalId;
+
+    const { referencia, descripcion } = await this.resolveProductoDisplay(dto.productoId, hospitalId);
 
     return this.prisma.detCotiza.update({
       where: { id: itemId },
@@ -774,6 +785,7 @@ export class CotizacionesService {
         cantidad: dto.cantidad,
         valorUnitario: dto.valorUnitario,
         valor: dto.cantidad * dto.valorUnitario,
+        hospitalId,
         // Solo se toca si vino en el body — así un caller que no mande observaciones (ej. un
         // futuro editor que solo cambie cantidad/precio) no la borra sin querer.
         ...(dto.observaciones !== undefined ? { observaciones: dto.observaciones || null } : {}),
