@@ -481,7 +481,7 @@ export class CotizacionesService {
       },
     });
 
-    const conCantidad = detalles
+    let conCantidad = detalles
       .filter(d => d.productoId && (d[nivelField] ?? 0) > 0)
       .map(d => ({
         id: d.productoId as string,
@@ -491,10 +491,28 @@ export class CotizacionesService {
         cantidad: d[nivelField] as number,
       }));
 
-    if (conCantidad.length === 0) return [];
+    // Un producto del paquete puede estar denegado para la tarifa del hospital elegido — igual
+    // que el buscador manual de productos (ver searchProductos), no se debe poder agregar como
+    // consumo. Se excluye acá y se le avisa al frontend cuántos se quitaron para que muestre una
+    // nota, en vez de dejarlos pasar en silencio solo por venir de un paquete.
+    let excluidosPorDenegado = 0;
+    if (tarifaId && conCantidad.length > 0) {
+      const denegados = await this.prisma.productoTarifaDenegada.findMany({
+        where: { tarifaId, productoId: { in: conCantidad.map(p => p.id) } },
+        select: { productoId: true },
+      });
+      if (denegados.length > 0) {
+        const denegadosSet = new Set(denegados.map(d => d.productoId));
+        const totalAntes = conCantidad.length;
+        conCantidad = conCantidad.filter(p => !denegadosSet.has(p.id));
+        excluidosPorDenegado = totalAntes - conCantidad.length;
+      }
+    }
+
+    if (conCantidad.length === 0) return { items: [], excluidosPorDenegado };
 
     if (!tarifaId) {
-      return conCantidad.map(p => ({ ...p, precioSugerido: null as number | null }));
+      return { items: conCantidad.map(p => ({ ...p, precioSugerido: null as number | null })), excluidosPorDenegado };
     }
 
     const listasPrecio = await this.prisma.listaPrecio.findMany({
@@ -503,7 +521,10 @@ export class CotizacionesService {
     });
     const precioPorProducto = new Map(listasPrecio.map(lp => [lp.productoId, lp.precio]));
 
-    return conCantidad.map(p => ({ ...p, precioSugerido: precioPorProducto.get(p.id) ?? null }));
+    return {
+      items: conCantidad.map(p => ({ ...p, precioSugerido: precioPorProducto.get(p.id) ?? null })),
+      excluidosPorDenegado,
+    };
   }
 
   // Precio de una lista de productos según una tarifa — se usa en el formulario de Nueva Cotización
