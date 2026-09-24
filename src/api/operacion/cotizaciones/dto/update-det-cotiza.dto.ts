@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsNumber, IsString } from 'class-validator';
+import { IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class UpdateDetCotizaDto {
   @ApiProperty()
@@ -14,4 +14,9 @@ export class UpdateDetCotizaDto {
   @ApiProperty()
   @Type(() => Number) @IsNumber()
   valorUnitario: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  observaciones?: string;
 }

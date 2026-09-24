@@ -538,27 +538,35 @@ export class CotizacionesService {
       subtarifaId = cotizacion?.tarifaId ?? undefined;
     }
 
-    const productosRaw = await this.prisma.producto.findMany({
-      where: {
-        categoriaId: { in: CATEGORIAS_COTIZABLES },
-        ...(subtarifaId ? { tarifasDenegadas: { none: { tarifaId: subtarifaId } } } : {}),
-        ...(searchTerm
-          ? {
-              OR: [
-                { nombre: { contains: searchTerm, mode: 'insensitive' as const } },
-                { referencia: { contains: searchTerm, mode: 'insensitive' as const } },
-                { sistema: { sistema: { contains: searchTerm, mode: 'insensitive' as const } } },
-              ],
-            }
-          : {}),
-      },
-      select: { id: true, nombre: true, referencia: true, sistema: { select: { sistema: true } } },
-      orderBy: { nombre: 'asc' },
-      // Sin término de búsqueda es el modo "ver todas las opciones" — se necesita un límite más
-      // alto para que realmente se vean todas, no solo 20 (mismo criterio que searchTerceros).
-      take: searchTerm ? 20 : 200,
-    });
-    const productos = productosRaw.map(p => ({ id: p.id, nombre: p.nombre, referencia: p.referencia, sistema: p.sistema?.sistema ?? null }));
+    // SQL crudo en vez de where/contains de Prisma: se necesita unaccent() para que "Solucion"
+    // también encuentre "Solución" (Prisma no tiene equivalente), mismo criterio que searchTerceros.
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND (
+          unaccent(p.nombre) ILIKE unaccent(${'%' + searchTerm + '%'})
+          OR unaccent(p.referencia) ILIKE unaccent(${'%' + searchTerm + '%'})
+          OR unaccent(s.sistema) ILIKE unaccent(${'%' + searchTerm + '%'})
+        )`
+      : Prisma.empty;
+    const tarifaFilter = subtarifaId
+      ? Prisma.sql`AND NOT EXISTS (
+          SELECT 1 FROM producto_tarifas_denegadas ptd
+          WHERE ptd.producto_id = p.id_producto AND ptd.tarifa_id = ${subtarifaId}
+        )`
+      : Prisma.empty;
+
+    const productosRaw = await this.prisma.$queryRaw<{ id: string; nombre: string | null; referencia: string | null; sistema: string | null }[]>`
+      SELECT p.id_producto AS id, p.nombre, p.referencia, s.sistema
+      FROM productos p
+      LEFT JOIN sistemas s ON s.id_producto = p.sistema_id
+      WHERE p.categoria_id IN (${Prisma.join(CATEGORIAS_COTIZABLES)})
+      ${searchFilter}
+      ${tarifaFilter}
+      ORDER BY p.nombre ASC
+      -- Sin término de búsqueda es el modo "ver todas las opciones" — se necesita un límite más
+      -- alto para que realmente se vean todas, no solo 20 (mismo criterio que searchTerceros).
+      LIMIT ${searchTerm ? 20 : 200}
+    `;
+    const productos = productosRaw.map(p => ({ id: p.id, nombre: p.nombre, referencia: p.referencia, sistema: p.sistema ?? null }));
 
     // Si el hospital de la cotización pertenece a un grupo con referencia/nombre especial para
     // alguno de estos productos, se marca acá para que el buscador lo muestre ANTES de agregarlo
@@ -766,11 +774,20 @@ export class CotizacionesService {
         cantidad: dto.cantidad,
         valorUnitario: dto.valorUnitario,
         valor: dto.cantidad * dto.valorUnitario,
+        // Solo se toca si vino en el body — así un caller que no mande observaciones (ej. un
+        // futuro editor que solo cambie cantidad/precio) no la borra sin querer.
+        ...(dto.observaciones !== undefined ? { observaciones: dto.observaciones || null } : {}),
       },
     });
   }
 
   async deleteItem(itemId: string) {
+    const item = await this.prisma.detCotiza.findUnique({ where: { id: itemId }, select: { cotizacionId: true } });
+    if (!item) return { success: true };
+    const totalItems = await this.prisma.detCotiza.count({ where: { cotizacionId: item.cotizacionId } });
+    if (totalItems <= 1) {
+      throw new BadRequestException('La cotización debe tener al menos un consumo.');
+    }
     await this.prisma.detCotiza.delete({ where: { id: itemId } });
     return { success: true };
   }
@@ -813,6 +830,35 @@ export class CotizacionesService {
     }
 
     return { actualizados: itemsConPrecio.length, omitidos: items.length - itemsConPrecio.length };
+  }
+
+  // Cuando en edición cambia el Hospital, la referencia/nombre de los consumos ya agregados debe
+  // reflejar el especial del grupo del nuevo hospital (o volver al estándar del producto si el
+  // nuevo hospital no tiene uno) — mismo criterio que recalcularPrecios con el valor unitario al
+  // cambiar la tarifa. Reutiliza resolveProductoDisplay para no duplicar esa lógica.
+  async recalcularNombresEspeciales(cotizacionId: string, hospitalId: string | null) {
+    const items = await this.prisma.detCotiza.findMany({
+      where: { cotizacionId },
+      select: { id: true, productoId: true, referencia: true, descripcion: true },
+    });
+    if (items.length === 0) return { actualizados: 0 };
+
+    const updates: { id: string; referencia: string | null; descripcion: string | null }[] = [];
+    for (const item of items) {
+      if (!item.productoId) continue;
+      const { referencia, descripcion } = await this.resolveProductoDisplay(item.productoId, hospitalId);
+      if (referencia !== item.referencia || descripcion !== item.descripcion) {
+        updates.push({ id: item.id, referencia, descripcion });
+      }
+    }
+
+    if (updates.length > 0) {
+      await this.prisma.$transaction(
+        updates.map(u => this.prisma.detCotiza.update({ where: { id: u.id }, data: { referencia: u.referencia, descripcion: u.descripcion } })),
+      );
+    }
+
+    return { actualizados: updates.length };
   }
 
   private async generateId(): Promise<string> {

@@ -9,6 +9,7 @@ import { UpdateDetCotizaDto } from './dto/update-det-cotiza.dto';
 import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
 import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
 import { RecalcularPreciosDto } from './dto/recalcular-precios.dto';
+import { RecalcularNombresEspecialesDto } from './dto/recalcular-nombres-especiales.dto';
 import { PreciosPorProductosDto } from './dto/precios-por-productos.dto';
 import { SetFirmaCotizacionDto } from './dto/set-firma-cotizacion.dto';
 
@@ -114,6 +115,12 @@ export class CotizacionesController {
   @ApiOperation({ summary: 'Recalcular el valor unitario/valor de los ítems ya agregados según la lista de precios de una nueva tarifa (ej. al cambiar el Cubrimiento o Responsable Económico en edición)' })
   recalcularPrecios(@Param('id') id: string, @Body() dto: RecalcularPreciosDto) {
     return this.service.recalcularPrecios(id, dto.tarifaId);
+  }
+
+  @Patch(':id/recalcular-nombres-especiales')
+  @ApiOperation({ summary: 'Recalcular la referencia/nombre de los ítems ya agregados según el especial del grupo del nuevo hospital (ej. al cambiar el Hospital en edición)' })
+  recalcularNombresEspeciales(@Param('id') id: string, @Body() dto: RecalcularNombresEspecialesDto) {
+    return this.service.recalcularNombresEspeciales(id, dto.hospitalId ?? null);
   }
 
   @Delete(':id')
