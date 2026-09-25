@@ -496,23 +496,28 @@ export class CotizacionesService {
     // consumo. Se excluye acá y se le avisa al frontend cuántos se quitaron para que muestre una
     // nota, en vez de dejarlos pasar en silencio solo por venir de un paquete.
     let excluidosPorDenegado = 0;
+    // productoId denegados para esta tarifa entre los productos del paquete — el frontend la usa
+    // para, al cambiar de hospital/tarifa en Editar, quitar de la cotización cualquier ítem que ya
+    // esté agregado y que ahora quede denegado (ver EditCotizacionForm/paqueteSyncMutation).
+    let denegadosIds: string[] = [];
     if (tarifaId && conCantidad.length > 0) {
       const denegados = await this.prisma.productoTarifaDenegada.findMany({
         where: { tarifaId, productoId: { in: conCantidad.map(p => p.id) } },
         select: { productoId: true },
       });
       if (denegados.length > 0) {
-        const denegadosSet = new Set(denegados.map(d => d.productoId));
+        denegadosIds = denegados.map(d => d.productoId).filter((id): id is string => !!id);
+        const denegadosSet = new Set(denegadosIds);
         const totalAntes = conCantidad.length;
         conCantidad = conCantidad.filter(p => !denegadosSet.has(p.id));
         excluidosPorDenegado = totalAntes - conCantidad.length;
       }
     }
 
-    if (conCantidad.length === 0) return { items: [], excluidosPorDenegado };
+    if (conCantidad.length === 0) return { items: [], excluidosPorDenegado, denegadosIds };
 
     if (!tarifaId) {
-      return { items: conCantidad.map(p => ({ ...p, precioSugerido: null as number | null })), excluidosPorDenegado };
+      return { items: conCantidad.map(p => ({ ...p, precioSugerido: null as number | null })), excluidosPorDenegado, denegadosIds };
     }
 
     const listasPrecio = await this.prisma.listaPrecio.findMany({
@@ -524,6 +529,7 @@ export class CotizacionesService {
     return {
       items: conCantidad.map(p => ({ ...p, precioSugerido: precioPorProducto.get(p.id) ?? null })),
       excluidosPorDenegado,
+      denegadosIds,
     };
   }
 
@@ -727,12 +733,17 @@ export class CotizacionesService {
     });
     if (!cotizacion) throw new NotFoundException('Cotización no encontrada');
 
+    // Mismo criterio que createItem/updateItem: si el formulario manda un hospitalId (ej. se
+    // cambió el hospital en Editar y aún no se guarda la cotización), se usa ese para resolver
+    // especiales en vez del ya guardado. Todos los ítems de un mismo bulk comparten hospital.
+    const hospitalId = dtos[0]?.hospitalId ?? cotizacion.hospitalId;
+
     const usuario = usuarioId
       ? await this.prisma.tercero.findUnique({ where: { id: usuarioId }, select: { nombreCompleto: true } })
       : null;
 
-    const grupoId = cotizacion.hospitalId
-      ? (await this.prisma.tercero.findUnique({ where: { id: cotizacion.hospitalId }, select: { grupoId: true } }))?.grupoId ?? null
+    const grupoId = hospitalId
+      ? (await this.prisma.tercero.findUnique({ where: { id: hospitalId }, select: { grupoId: true } }))?.grupoId ?? null
       : null;
 
     const productoIds = [...new Set(dtos.map(d => d.productoId))];
@@ -768,7 +779,7 @@ export class CotizacionesService {
         id: ids[i],
         cotizacionId,
         marcaDeTiempo: new Date(base + i),
-        hospitalId: cotizacion.hospitalId,
+        hospitalId,
         referencia: especial?.referencia ? especial.referencia : (producto?.referencia ?? null),
         descripcion: especial?.nombreEspecial ? especial.nombreEspecial : (producto?.nombre ?? null),
         productoId: dto.productoId,
