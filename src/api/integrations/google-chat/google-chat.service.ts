@@ -45,6 +45,11 @@ function labelVerde(texto: string): string {
 export class GoogleChatService {
   private readonly logger = new Logger(GoogleChatService.name);
   private readonly auth: InstanceType<typeof google.auth.GoogleAuth> | null;
+  // A diferencia de `auth` (el service account actuando como sí mismo, para postear en espacios
+  // fijos), esto impersona a un admin del Workspace (GOOGLE_WORKSPACE_ADMIN_EMAIL) vía Domain-Wide
+  // Delegation, solo para leer el directorio (scope admin.directory.user.readonly) — nunca para
+  // mandar nada en su nombre.
+  private readonly directoryAuth: InstanceType<typeof google.auth.JWT> | null;
   private readonly spaceGdl: string | undefined;
   private readonly spaceYucatan: string | undefined;
 
@@ -56,16 +61,167 @@ export class GoogleChatService {
     if (!keyBase64) {
       this.logger.warn('GOOGLE_CHAT_SA_KEY_BASE64 no configurada — el envío a Google Chat no funcionará');
       this.auth = null;
+      this.directoryAuth = null;
     } else {
       const credentials = JSON.parse(Buffer.from(keyBase64, 'base64').toString('utf-8'));
       this.auth = new google.auth.GoogleAuth({
         credentials,
         scopes: ['https://www.googleapis.com/auth/chat.bot'],
       });
+
+      const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL;
+      if (!adminEmail) {
+        this.logger.warn('GOOGLE_WORKSPACE_ADMIN_EMAIL no configurada — la búsqueda en el directorio no funcionará');
+        this.directoryAuth = null;
+      } else {
+        this.directoryAuth = new google.auth.JWT({
+          email: credentials.client_email,
+          key: credentials.private_key,
+          scopes: ['https://www.googleapis.com/auth/admin.directory.user.readonly'],
+          subject: adminEmail,
+        });
+      }
     }
 
     this.limpiarCotizacionesVencidas();
     setInterval(() => this.limpiarCotizacionesVencidas(), CLEANUP_INTERVAL_MS).unref();
+  }
+
+  // Usuarios del directorio de Workspace que hagan match con el término buscado — para elegir a
+  // quién mandarle una cotización por Chat directo. Se limpian los caracteres que rompen la
+  // sintaxis de búsqueda de la Admin SDK (":"/""") en vez de escaparlos, porque acá es solo un
+  // término suelto, no hace falta soportarlos. La Admin SDK no soporta "OR" entre campos ni un
+  // campo "name" combinado (ambos probados, ambos rechazados por la API) — así que se hacen
+  // consultas separadas por campo válido (givenName/familyName, o email si el término trae "@")
+  // y se juntan los resultados sin duplicados.
+  async buscarDirectorio(query: string): Promise<{ nombre: string; correo: string; id: string }[]> {
+    if (!this.directoryAuth) {
+      throw new InternalServerErrorException('Directorio de Google Workspace no configurado en este ambiente');
+    }
+    const termino = query.trim().replace(/[":]/g, '');
+    if (!termino) return [];
+
+    const admin = google.admin({ version: 'directory_v1', auth: this.directoryAuth });
+    const consultas = termino.includes('@')
+      ? [`email:${termino}*`]
+      : [`givenName:${termino}*`, `familyName:${termino}*`];
+
+    const resultados = await Promise.all(
+      consultas.map(q => admin.users.list({ customer: 'my_customer', query: q, maxResults: 10, orderBy: 'givenName' }).then(r => r.data.users ?? [])),
+    );
+
+    const vistos = new Set<string>();
+    // El id numérico del directorio (no el correo) es lo que se usa después para abrir el DM —
+    // spaces.findDirectMessage con auth de app rechaza correos que sean alias ("Service account
+    // authentication doesn't support access to user information using email aliases"), pero el id
+    // no tiene ese problema.
+    const usuarios: { nombre: string; correo: string; id: string }[] = [];
+    for (const lista of resultados) {
+      for (const u of lista) {
+        const correo = u.primaryEmail;
+        const id = u.id;
+        if (!correo || !id || vistos.has(correo)) continue;
+        vistos.add(correo);
+        usuarios.push({ nombre: u.name?.fullName ?? correo, correo, id });
+      }
+    }
+    return usuarios.slice(0, 10);
+  }
+
+  // Envía el PDF de una cotización por mensaje directo (DM) de Chat a una persona específica del
+  // directorio — mismo mecanismo de card que sendProgramacionPdf, pero el destino es un DM
+  // resuelto/creado con spaces.setup en vez de uno de los dos espacios fijos por sede.
+  async sendCotizacionDm(params: {
+    cotizacionId: string;
+    destinatarioId: string;
+    numCotizacion: string;
+    hospital: string;
+    medico: string;
+    cirugia: string;
+    total: string;
+    file: Express.Multer.File;
+    usuarioId?: string;
+  }): Promise<void> {
+    if (!this.auth) {
+      throw new InternalServerErrorException('Integración de Google Chat no configurada en este ambiente');
+    }
+    if (!params.destinatarioId) {
+      throw new BadRequestException('Falta el destinatario');
+    }
+    if (params.file.mimetype !== 'application/pdf') {
+      throw new BadRequestException('Solo se permiten archivos PDF');
+    }
+
+    const enviadoPor = params.usuarioId
+      ? await this.prisma.tercero.findUnique({ where: { id: params.usuarioId }, select: { nombreCompleto: true } })
+      : null;
+
+    const archivoId = randomUUID();
+    saveUploadFile(COTIZACIONES_CHAT_SUBDIR, `${archivoId}.pdf`, params.file.buffer);
+    const backendUrl = process.env.BACKEND_URL ?? 'http://localhost:3000';
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+    const cotizacionUrl = `${backendUrl}/integraciones/google-chat/cotizacion/${archivoId}`;
+
+    const chat = google.chat({ version: 'v1', auth: this.auth });
+
+    // spaces.setup (crear/abrir un DM) requiere autenticación de usuario, no de app — un bot no
+    // puede iniciar un DM en frío con alguien. findDirectMessage sí funciona con auth de app, pero
+    // solo encuentra un DM que YA existe: existe automáticamente para todos si la app de Chat está
+    // instalada para toda la organización (ver decisión del 2026-09-25, PENDIENTE de que se
+    // publique/instale así — hasta entonces esto da 404 para cualquier destinatario).
+    let spaceName: string | null | undefined;
+    try {
+      const found = await chat.spaces.findDirectMessage({ name: `users/${params.destinatarioId}` });
+      spaceName = found.data.name;
+    } catch (err) {
+      const status = (err as { code?: number })?.code;
+      if (status === 404) {
+        throw new BadRequestException('No se encontró un mensaje directo con esa persona en Google Chat. Puede que la app de Chat todavía no esté instalada para toda la organización, o que esa persona no la tenga habilitada.');
+      }
+      throw err;
+    }
+    if (!spaceName) throw new InternalServerErrorException('No se pudo encontrar el mensaje directo en Google Chat');
+
+    await chat.spaces.messages.create({
+      parent: spaceName,
+      requestBody: {
+        cardsV2: [{
+          cardId: `cotizacion-${params.cotizacionId}`,
+          card: {
+            header: {
+              title: 'Cotización',
+              subtitle: params.numCotizacion,
+              imageUrl: `${backendUrl}/integraciones/google-chat/icon`,
+              imageType: 'CIRCLE',
+              imageAltText: 'Luminar',
+            },
+            sections: [
+              {
+                widgets: [
+                  { decoratedText: { startIcon: { knownIcon: 'STORE' }, topLabel: labelVerde('Hospital'), text: params.hospital, wrapText: true } },
+                  { decoratedText: { startIcon: { knownIcon: 'PERSON' }, topLabel: labelVerde('Médico'), text: params.medico, wrapText: true } },
+                  { decoratedText: { startIcon: { knownIcon: 'DESCRIPTION' }, topLabel: labelVerde('Cirugía'), text: params.cirugia, wrapText: true } },
+                  { decoratedText: { startIcon: { knownIcon: 'DOLLAR' }, topLabel: labelVerde('Total'), text: params.total } },
+                ],
+              },
+              {
+                widgets: [
+                  {
+                    buttonList: {
+                      buttons: [
+                        { text: 'Ver cotización', onClick: { openLink: { url: cotizacionUrl } }, color: { red: 0.247, green: 0.396, blue: 0.063, alpha: 1 } },
+                        { text: 'Abrir en Luminar', onClick: { openLink: { url: `${frontendUrl}/operacion/cotizaciones/${params.cotizacionId}` } }, color: { red: 0.247, green: 0.396, blue: 0.063, alpha: 1 } },
+                      ],
+                    },
+                  },
+                  { decoratedText: { text: `<i>Enviado por ${enviadoPor?.nombreCompleto ?? '-'}</i>` } },
+                ],
+              },
+            ],
+          },
+        }],
+      },
+    });
   }
 
   // Las cotizaciones mandadas a Chat solo viven 24h en el servidor — pasado ese tiempo el link

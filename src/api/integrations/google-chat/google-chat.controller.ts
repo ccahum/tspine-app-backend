@@ -1,6 +1,6 @@
 import { createReadStream, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { Body, Controller, Get, Param, Post, Req, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
@@ -70,6 +70,27 @@ export class GoogleChatController {
   ) {
     const user = req['user'] as { sub: string };
     await this.googleChatService.sendProgramacionPdf(programacionId, file, user.sub);
+    return { success: true };
+  }
+
+  @Get('directorio')
+  @ApiOperation({ summary: 'Busca usuarios en el directorio de Google Workspace, para elegir destinatario de un envío directo' })
+  buscarDirectorio(@Query('search') search: string) {
+    return this.googleChatService.buscarDirectorio(search ?? '');
+  }
+
+  @Post('send-cotizacion')
+  @ApiOperation({ summary: 'Envía el PDF de una cotización por mensaje directo de Google Chat a una persona específica del directorio' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
+  async sendCotizacion(
+    @Body() body: { cotizacionId: string; destinatarioId: string; numCotizacion: string; hospital: string; medico: string; cirugia: string; total: string },
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Req() req: Request,
+  ) {
+    if (!file) throw new BadRequestException('Falta el PDF de la cotización');
+    const user = req['user'] as { sub: string };
+    await this.googleChatService.sendCotizacionDm({ ...body, file, usuarioId: user.sub });
     return { success: true };
   }
 
