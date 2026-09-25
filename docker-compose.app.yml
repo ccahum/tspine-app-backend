@@ -17,21 +17,15 @@ services:
   backend:
     build: .
     restart: unless-stopped
+    # env_file pasa TODAS las variables de .env.qa/.env.prod al contenedor de una — a diferencia
+    # de listarlas una por una acá abajo, una variable nueva (ej. una integración nueva) ya no
+    # necesita tocar este archivo ni redeployar, solo agregarse al .env del servidor y reiniciar.
+    # NODE_ENV y DATABASE_URL se quedan explícitos porque no son un passthrough directo del .env
+    # (DATABASE_URL se arma combinando otras variables; environment: siempre gana sobre env_file
+    # para la misma clave, así que no hay conflicto si alguna llegara a coincidir).
+    env_file: .env.${ENV_NAME}
     environment:
       NODE_ENV: production
-      PORT: ${PORT}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
-      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY}
-      LOG_LEVEL: ${LOG_LEVEL}
-      CORS_ORIGINS: ${CORS_ORIGINS}
-      GOOGLE_CHAT_SA_KEY_BASE64: ${GOOGLE_CHAT_SA_KEY_BASE64}
-      GOOGLE_CHAT_SPACE_GDL: ${GOOGLE_CHAT_SPACE_GDL}
-      GOOGLE_CHAT_SPACE_YUCATAN: ${GOOGLE_CHAT_SPACE_YUCATAN}
-      FRONTEND_URL: ${FRONTEND_URL}
-      BACKEND_URL: ${BACKEND_URL}
-      RESEND_API_KEY: ${RESEND_API_KEY}
-      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL}
       DATABASE_URL: postgresql://tspine:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     volumes:
       - ./logs:/app/logs
