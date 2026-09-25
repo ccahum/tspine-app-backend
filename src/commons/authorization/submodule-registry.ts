@@ -34,5 +34,7 @@ export const SUBMODULE_REGISTRY: SubmoduleDef[] = [
 ];
 
 // Prefijos de primer segmento que cualquier usuario autenticado necesita sin importar su perfil —
-// utilitarios transversales, no "módulos" propiamente.
-export const ALWAYS_ALLOWED_PREFIXES = ['auth', 'notificaciones', 'busqueda-global'];
+// utilitarios transversales, no "módulos" propiamente. "integraciones" (Google Chat: directorio,
+// envío de PDFs) lo usan tanto Programación como Cotizaciones — el botón para llegar ahí ya está
+// detrás del acceso al submódulo correspondiente, así que no hace falta restringirlo de nuevo acá.
+export const ALWAYS_ALLOWED_PREFIXES = ['auth', 'notificaciones', 'busqueda-global', 'integraciones'];
