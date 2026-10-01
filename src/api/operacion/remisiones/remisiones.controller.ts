@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ClasificacionTercero } from '@prisma/client';
 import { Request, Response } from 'express';
 import { createReadStream } from 'fs';
 import { RemisionesService } from './remisiones.service';
@@ -13,8 +14,14 @@ import { UpdateRemisionDto } from './dto/update-remision.dto';
 import { CreateTecnicoSugeridoDto } from './dto/create-tecnico-sugerido.dto';
 import { CreateDetRequisicionDto } from './dto/create-det-requisicion.dto';
 import { UpdateDetRequisicionDto } from './dto/update-det-requisicion.dto';
+import { CreateValConsumoDto } from './dto/create-val-consumo.dto';
 import { CreateValConsumoLoteDto } from './dto/create-val-consumo-lote.dto';
 import { CreateDocumentoProgramacionDto } from './dto/create-documento-programacion.dto';
+import { CreateDetConsumoBulkDto } from './dto/create-det-consumo-bulk.dto';
+import { CreateRemTecnicoBulkDto } from './dto/create-rem-tecnico-bulk.dto';
+import { AddRemTecnicoDto } from './dto/add-rem-tecnico.dto';
+import { CreateDetConsumoDto } from './dto/create-det-consumo.dto';
+import { UpdateDetConsumoDto } from './dto/update-det-consumo.dto';
 import { SuperAdminOnly } from '@app/commons/decorators/super-admin-only.decorator';
 
 @ApiTags('Operación - Remisiones')
@@ -97,9 +104,10 @@ export class RemisionesController {
   }
 
   @Get('comisiones-tecnicos')
-  @ApiOperation({ summary: 'Buscar técnicos/contactos (Terceros) por nombre, para asignar una comisión' })
-  searchTecnicos(@Query('search') search?: string) {
-    return this.service.searchTecnicos(search);
+  @ApiOperation({ summary: 'Buscar técnicos/contactos (Terceros) por nombre, para asignar una comisión o como Responsable Económico de una remisión' })
+  @ApiQuery({ name: 'clasificacion', required: false, enum: ClasificacionTercero })
+  searchTecnicos(@Query('search') search?: string, @Query('clasificacion') clasificacion?: ClasificacionTercero) {
+    return this.service.searchTecnicos(search, clasificacion);
   }
 
   @Get('empresas')
@@ -154,6 +162,12 @@ export class RemisionesController {
     return this.service.getRequisicionDetalle(id);
   }
 
+  @Get('tercero-tarifa/:id')
+  @ApiOperation({ summary: 'Tarifa propia de un Tercero (ej. el contacto/hospital de una requisición), si tiene una asignada' })
+  getTerceroTarifa(@Param('id') id: string) {
+    return this.service.getTerceroTarifa(id);
+  }
+
   @Patch('requisiciones/:id')
   @ApiOperation({ summary: 'Editar una requisición existente' })
   updateRequisicion(@Param('id') id: string, @Body() dto: UpdateRequisicionDto) {
@@ -181,6 +195,62 @@ export class RemisionesController {
   createRemision(@Body() dto: CreateRemisionDto, @Req() req: Request) {
     const user = req['user'] as { sub: string };
     return this.service.createRemision(dto, user.sub);
+  }
+
+  @Post(':id/consumos/bulk')
+  @ApiOperation({ summary: 'Agregar varios consumos (Det_Consumo) a una remisión de una sola vez, en el orden dado — usado al crear una remisión con varios consumos ya armados (ej. desde un paquete), para no hacer un request por consumo' })
+  @ApiCreatedResponse({ description: 'Consumos creados' })
+  createConsumosBulk(@Param('id') id: string, @Body() dto: CreateDetConsumoBulkDto) {
+    return this.service.createDetConsumosBulk(id, dto.items);
+  }
+
+  @Post(':id/tecnicos/bulk')
+  @ApiOperation({ summary: 'Asociar varios técnicos (Rem_Tecnicos) a una remisión de una sola vez — usado al crear una remisión con técnicos ya elegidos, para no hacer un request por técnico' })
+  @ApiCreatedResponse({ description: 'Técnicos asociados' })
+  createRemTecnicosBulk(@Param('id') id: string, @Body() dto: CreateRemTecnicoBulkDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string };
+    return this.service.createRemTecnicosBulk(id, dto.tecnicoIds, user.sub);
+  }
+
+  @Post(':id/tecnicos')
+  @ApiOperation({ summary: 'Agregar un técnico a una remisión ya existente (solo permitido si está en estado Tramitada o Descorche)' })
+  @ApiCreatedResponse({ description: 'Técnico asociado' })
+  addRemTecnico(@Param('id') id: string, @Body() dto: AddRemTecnicoDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string };
+    return this.service.addRemTecnico(id, dto.tecnicoId, user.sub);
+  }
+
+  @Delete('tecnicos/:relId')
+  @ApiOperation({ summary: 'Quitar un técnico asociado a una remisión ya existente (solo permitido si está en estado Tramitada o Descorche)' })
+  removeRemTecnico(@Param('relId') relId: string) {
+    return this.service.removeRemTecnico(relId);
+  }
+
+  @Post(':id/consumos')
+  @ApiOperation({ summary: 'Agregar un consumo a una remisión ya existente (solo permitido si está en estado Tramitada o Descorche, y sin factura asociada)' })
+  @ApiCreatedResponse({ description: 'Consumo creado' })
+  addDetConsumo(@Param('id') id: string, @Body() dto: CreateDetConsumoDto) {
+    return this.service.addDetConsumo(id, dto);
+  }
+
+  @Patch('consumos/:consumoId')
+  @ApiOperation({ summary: 'Editar un consumo de una remisión ya existente (solo permitido si está en estado Tramitada o Descorche, y sin factura asociada)' })
+  updateDetConsumo(@Param('consumoId') consumoId: string, @Body() dto: UpdateDetConsumoDto) {
+    return this.service.updateDetConsumo(consumoId, dto);
+  }
+
+  @Post('consumos/:consumoId/validar')
+  @ApiOperation({ summary: 'Validar un consumo (Det_Consumo): crea el registro de validación (ValConsumo)' })
+  @ApiCreatedResponse({ description: 'Validación de consumo creada' })
+  createValConsumo(@Param('consumoId') consumoId: string, @Body() dto: CreateValConsumoDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string };
+    return this.service.createValConsumo(consumoId, dto, user.sub);
+  }
+
+  @Delete('consumos/:consumoId')
+  @ApiOperation({ summary: 'Eliminar un consumo de una remisión ya existente (solo permitido si está en estado Tramitada o Descorche, y sin factura asociada)' })
+  removeDetConsumo(@Param('consumoId') consumoId: string) {
+    return this.service.removeDetConsumo(consumoId);
   }
 
   @Get('cubrimientos')
@@ -215,6 +285,13 @@ export class RemisionesController {
     return this.service.updateDetRequisicion(id, dto);
   }
 
+  @Delete('detalles-requisicion/:id')
+  @ApiOperation({ summary: 'Eliminar un insumo de una requisición' })
+  async deleteDetRequisicion(@Param('id') id: string) {
+    await this.service.deleteDetRequisicion(id);
+    return { success: true };
+  }
+
   @Get('lotes')
   @ApiOperation({ summary: 'Buscar Lotes por nombre' })
   searchLotes(@Query('search') search?: string) {
@@ -223,8 +300,9 @@ export class RemisionesController {
 
   @Get('productos')
   @ApiOperation({ summary: 'Buscar Productos por nombre (incluye precios por cubrimiento)' })
-  searchProductos(@Query('search') search?: string, @Query('tarifaId') tarifaId?: string) {
-    return this.service.searchProductos(search, tarifaId);
+  @ApiQuery({ name: 'soloCotizables', required: false, description: 'Si es "true", acota a las 5 categorías cotizables (Renta, Implante, Consumible, Biológico, Refrigerados)' })
+  searchProductos(@Query('search') search?: string, @Query('tarifaId') tarifaId?: string, @Query('soloCotizables') soloCotizables?: string) {
+    return this.service.searchProductos(search, tarifaId, soloCotizables === 'true');
   }
 
   @Get('almacenes')

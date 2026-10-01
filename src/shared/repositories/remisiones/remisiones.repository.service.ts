@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ClasificacionTercero, Prisma } from '@prisma/client';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { RemisionQueryDto } from '@app/api/operacion/remisiones/dto/remision-query.dto';
@@ -8,10 +9,16 @@ import { CreateDetRequisicionDto } from '@app/api/operacion/remisiones/dto/creat
 import { CreateRemisionDto } from '@app/api/operacion/remisiones/dto/create-remision.dto';
 import { UpdateRemisionDto } from '@app/api/operacion/remisiones/dto/update-remision.dto';
 import { CreateTecnicoSugeridoDto } from '@app/api/operacion/remisiones/dto/create-tecnico-sugerido.dto';
+import { CreateValConsumoDto } from '@app/api/operacion/remisiones/dto/create-val-consumo.dto';
 import { CreateValConsumoLoteDto } from '@app/api/operacion/remisiones/dto/create-val-consumo-lote.dto';
 import { CreateDocumentoProgramacionDto } from '@app/api/operacion/remisiones/dto/create-documento-programacion.dto';
-import { decodeBase64DataUrl, mimeFromExtension, resolveUploadPath, saveUploadFile, uploadFileExists } from '@app/commons/file-storage.utils';
+import { decodeBase64DataUrl, extensionFromMime, mimeFromDataUrl, mimeFromExtension, resolveUploadPath, saveUploadFile, uploadFileExists } from '@app/commons/file-storage.utils';
 import { nowMexico } from '@app/commons/date.utils';
+
+// Mismas 5 categorías "cotizables" que CotizacionesService.searchProductos — usado solo cuando
+// searchProductos se llama con soloCotizables=true (ej. el buscador de "Pro Val" al validar un
+// consumo, que no debe mostrar Instrumental/Equipo/Tapa/Utilería, etc.).
+const CATEGORIAS_COTIZABLES = ['Renta', 'Implante', 'Consumible', 'Biológico', 'Refrigerados'];
 
 const normalizeText = (text: string): string =>
   text
@@ -52,12 +59,36 @@ export class RemisionesRepositoryService {
     throw new Error('No se pudo generar un ID único para la comisión');
   }
 
+  private async generateDetTecnicoDetalleId(): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const id = randomBytes(4).toString('hex');
+      const exists = await this.prisma.detTecnicoDetalle.findUnique({ where: { id }, select: { id: true } });
+      if (!exists) return id;
+    }
+    throw new Error('No se pudo generar un ID único para el detalle de la comisión');
+  }
+
   async createComision(dto: CreateComisionDto) {
+    if (!dto.vrComision && !dto.detalles?.length) {
+      throw new BadRequestException('Debes indicar un valor de asignación o al menos una línea de detalle.');
+    }
+
     const id = await this.generateDetTecnicoId();
+    const detallesData = dto.detalles?.length
+      ? await Promise.all(dto.detalles.map(async d => ({
+          id: await this.generateDetTecnicoDetalleId(),
+          programacionId: dto.programacionId,
+          remisionId: d.remisionId,
+          productoId: d.productoId,
+          valor: d.valor,
+        })))
+      : undefined;
+
     return this.prisma.detTecnico.create({
       data: {
         id,
         programacionId: dto.programacionId,
+        marcaTiempo: nowMexico(),
         categoria: dto.categoria,
         tipo: dto.tipo,
         tecnicoId: dto.tecnicoId,
@@ -70,17 +101,31 @@ export class RemisionesRepositoryService {
         quieresDesglosar: dto.quieresDesglosar,
         seleccioneTipo: dto.seleccioneTipo,
         estadoActual: true,
+        detalles: detallesData ? { create: detallesData } : undefined,
       },
     });
   }
 
-  async searchTecnicos(search?: string) {
-    return this.prisma.tercero.findMany({
-      where: search?.trim() ? { nombreCompleto: { contains: search, mode: 'insensitive' as const } } : {},
-      select: { id: true, nombreCompleto: true },
-      orderBy: { nombreCompleto: 'asc' },
-      take: 20,
-    });
+  async searchTecnicos(search?: string, clasificacion?: ClasificacionTercero) {
+    const searchTerm = search?.trim();
+    // SQL crudo (no where/contains de Prisma) para que la búsqueda ignore acentos, igual que
+    // searchProductos/searchLotes — Prisma no tiene equivalente a unaccent().
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND unaccent(t.nombre_completo) ILIKE unaccent(${'%' + searchTerm + '%'})`
+      : Prisma.empty;
+    const clasificacionFilter = clasificacion
+      ? Prisma.sql`AND EXISTS (SELECT 1 FROM tercero_clasificaciones tc WHERE tc.tercero_id = t.id AND tc.clasificacion = ${clasificacion}::"ClasificacionTercero")`
+      : Prisma.empty;
+
+    return this.prisma.$queryRaw<{ id: string; nombreCompleto: string | null }[]>`
+      SELECT t.id AS id, t.nombre_completo AS "nombreCompleto"
+      FROM terceros t
+      WHERE 1=1
+      ${clasificacionFilter}
+      ${searchFilter}
+      ORDER BY t.nombre_completo ASC
+      LIMIT 20
+    `;
   }
 
   async searchEmpresas(search?: string) {
@@ -120,15 +165,19 @@ export class RemisionesRepositoryService {
   }
 
   async searchTecnicosComisionistas(search?: string) {
-    return this.prisma.tercero.findMany({
-      where: {
-        clasificaciones: { some: { clasificacion: 'COMISIONISTA' } },
-        ...(search?.trim() ? { nombreCompleto: { contains: search, mode: 'insensitive' as const } } : {}),
-      },
-      select: { id: true, nombreCompleto: true },
-      orderBy: { nombreCompleto: 'asc' },
-      take: 20,
-    });
+    const searchTerm = search?.trim();
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND unaccent(t.nombre_completo) ILIKE unaccent(${'%' + searchTerm + '%'})`
+      : Prisma.empty;
+
+    return this.prisma.$queryRaw<{ id: string; nombreCompleto: string | null }[]>`
+      SELECT t.id AS id, t.nombre_completo AS "nombreCompleto"
+      FROM terceros t
+      WHERE EXISTS (SELECT 1 FROM tercero_clasificaciones tc WHERE tc.tercero_id = t.id AND tc.clasificacion = 'COMISIONISTA'::"ClasificacionTercero")
+      ${searchFilter}
+      ORDER BY t.nombre_completo ASC
+      LIMIT 20
+    `;
   }
 
   async findTecnicosSugeridosByProgramacion(programacionId: string) {
@@ -316,6 +365,7 @@ export class RemisionesRepositoryService {
         valor: true,
         remision: { select: { id: true, numRemision: true } },
         producto: { select: { id: true, referencia: true, nombre: true } },
+        _count: { select: { valConsumos: { where: { eliminar: { not: true } } } } },
       },
       orderBy: { id: 'asc' },
     });
@@ -339,6 +389,7 @@ export class RemisionesRepositoryService {
         productoNombre: c.producto?.nombre ?? null,
         valorUnitario: Number(c.valorUnitario ?? 0),
         valor: Number(c.valor ?? 0),
+        validado: c._count.valConsumos > 0,
       });
     }
 
@@ -368,6 +419,7 @@ export class RemisionesRepositoryService {
             numProgram: true,
             fechaQx: true,
             consumo: true,
+            hospitalId: true,
             hospital: { select: { nombre: true } },
             medicos: { select: { medico: { select: { nombreCompleto: true } } } },
           },
@@ -409,10 +461,14 @@ export class RemisionesRepositoryService {
       ? `${referencia} / ${consumo.producto.nombre}`
       : (consumo.producto?.nombre ?? referencia ?? consumo.producto?.id ?? null);
 
+    const productoValidadoIds = [...new Set(validaciones.map(v => v.producto?.id).filter((id): id is string => !!id))];
+    const especialesValidados = await this.getEspecialesPorProducto(productoValidadoIds, consumo.programacion?.hospitalId);
+
     return {
       id: consumo.id,
       remisionId: consumo.remision?.id ?? null,
       numRemision: consumo.remision?.numRemision ?? null,
+      programacionId: consumo.programacion?.id ?? null,
       numProgram: consumo.programacion?.numProgram ?? consumo.programacion?.id ?? null,
       fechaQx: consumo.programacion?.fechaQx ?? null,
       doctor: consumo.programacion?.medicos.map(m => m.medico.nombreCompleto).join(', ') || null,
@@ -426,10 +482,12 @@ export class RemisionesRepositoryService {
       cantidadUsada: Number(consumo.cantidadUsada ?? 0),
       observaciones: consumo.observaciones,
       productoValidado: validaciones.map(v => {
-        const referenciaValidada = v.producto?.referencia ?? null;
-        const productoValidadoDescripcion = referenciaValidada && v.producto?.nombre
-          ? `${referenciaValidada} / ${v.producto.nombre}`
-          : (v.producto?.nombre ?? referenciaValidada ?? v.producto?.id ?? null);
+        const especial = v.producto?.id ? especialesValidados.get(v.producto.id) : undefined;
+        const referenciaValidada = especial?.referencia ?? v.producto?.referencia ?? null;
+        const nombreValidado = especial?.nombre ?? v.producto?.nombre ?? null;
+        const productoValidadoDescripcion = referenciaValidada && nombreValidado
+          ? `${referenciaValidada} / ${nombreValidado}`
+          : (nombreValidado ?? referenciaValidada ?? v.producto?.id ?? null);
         return {
         id: v.id,
         cantRemisionada: Number(consumo.cantidad ?? 0),
@@ -460,31 +518,70 @@ export class RemisionesRepositoryService {
     };
   }
 
+  /**
+   * Nombre/referencia especial que el grupo del hospital de la programación pueda tener para uno o
+   * más productos (ver ReferenciaEspecial / NombreProductoEspecial) — mismo mecanismo que
+   * CotizacionesService.resolveProductoDisplay, aplicado acá a los productos validados de un
+   * ValConsumo, que a diferencia de Det_Consumo no guardan su propia referencia/nombre resuelto y
+   * solo tienen productoId, así que hay que resolverlo al leer en vez de al guardar.
+   */
+  private async getEspecialesPorProducto(productoIds: string[], hospitalId: string | null | undefined) {
+    const especiales = new Map<string, { referencia: string | null; nombre: string | null }>();
+    if (!hospitalId || productoIds.length === 0) return especiales;
+
+    const hospital = await this.prisma.hospital.findUnique({ where: { id: hospitalId }, select: { terceroId: true } });
+    if (!hospital?.terceroId) return especiales;
+    const tercero = await this.prisma.tercero.findUnique({ where: { id: hospital.terceroId }, select: { grupoId: true } });
+    if (!tercero?.grupoId) return especiales;
+
+    const [refs, nombres] = await this.prisma.$transaction([
+      this.prisma.referenciaEspecial.findMany({ where: { grupoId: tercero.grupoId, productoId: { in: productoIds } }, select: { productoId: true, referencia: true } }),
+      this.prisma.nombreProductoEspecial.findMany({ where: { grupoId: tercero.grupoId, productoId: { in: productoIds } }, select: { productoId: true, nombreEspecial: true } }),
+    ]);
+    for (const r of refs) {
+      if (!r.productoId) continue;
+      especiales.set(r.productoId, { ...(especiales.get(r.productoId) ?? { referencia: null, nombre: null }), referencia: r.referencia });
+    }
+    for (const n of nombres) {
+      if (!n.productoId) continue;
+      especiales.set(n.productoId, { ...(especiales.get(n.productoId) ?? { referencia: null, nombre: null }), nombre: n.nombreEspecial });
+    }
+    return especiales;
+  }
+
   async findValidacionConsumosByProgramacion(programacionId: string) {
     // Mismo orden que las Remisiones (findByProgramacion): por fecha de creación asc
-    const remisionesOrden = await this.prisma.remision.findMany({
-      where: { programacionId },
-      select: { id: true },
-      orderBy: { creadoEn: 'asc' },
-    });
+    const [remisionesOrden, programacion] = await Promise.all([
+      this.prisma.remision.findMany({
+        where: { programacionId },
+        select: { id: true },
+        orderBy: { creadoEn: 'asc' },
+      }),
+      this.prisma.programacion.findUnique({ where: { id: programacionId }, select: { hospitalId: true } }),
+    ]);
     const ordenIndex = new Map(remisionesOrden.map((r, i) => [r.id, i]));
 
     const registros = await this.prisma.valConsumo.findMany({
       where: { programacionId, eliminar: { not: true } },
+      orderBy: { marcaTiempo: 'asc' },
       select: {
         id: true,
+        detConsumoId: true,
         remision: { select: { id: true, numRemision: true } },
         detConsumo: {
           select: {
             cantidad: true,
+            valor: true,
             producto: { select: { id: true, referencia: true, nombre: true } },
           },
         },
         producto: { select: { id: true, referencia: true, nombre: true } },
         lotes: { select: { cantidad: true } },
       },
-      orderBy: { id: 'asc' },
     });
+
+    const productoIds = [...new Set(registros.map(r => r.producto?.id).filter((id): id is string => !!id))];
+    const especiales = await this.getEspecialesPorProducto(productoIds, programacion?.hospitalId);
 
     const grupos = new Map<string, { remisionId: string | null; numRemision: string | null; items: any[] }>();
 
@@ -498,14 +595,17 @@ export class RemisionesRepositoryService {
         });
       }
       const cantRealValidada = r.lotes.reduce((sum, l) => sum + Number(l.cantidad ?? 0), 0);
+      const especial = r.producto?.id ? especiales.get(r.producto.id) : undefined;
       grupos.get(key)!.items.push({
         id: r.id,
+        detConsumoId: r.detConsumoId,
         cantRemisionada: Number(r.detConsumo?.cantidad ?? 0),
         cantRealValidada,
         referenciaRemisionada: r.detConsumo?.producto?.referencia ?? r.detConsumo?.producto?.id ?? null,
         nombreRemisionado: r.detConsumo?.producto?.nombre ?? null,
-        referenciaValidada: r.producto?.referencia ?? null,
-        nombreValidado: r.producto?.nombre ?? null,
+        referenciaValidada: especial?.referencia ?? r.producto?.referencia ?? null,
+        nombreValidado: especial?.nombre ?? r.producto?.nombre ?? null,
+        valor: Number(r.detConsumo?.valor ?? 0),
       });
     }
 
@@ -534,6 +634,7 @@ export class RemisionesRepositoryService {
             id: true,
             numProgram: true,
             fechaQx: true,
+            hospitalId: true,
             hospital: { select: { nombre: true } },
             medicos: { select: { medico: { select: { nombreCompleto: true } } } },
           },
@@ -570,10 +671,14 @@ export class RemisionesRepositoryService {
       ? `${referencia} / ${v.detConsumo.producto.nombre}`
       : (v.detConsumo?.producto?.nombre ?? referencia ?? v.detConsumo?.producto?.id ?? null);
 
-    const referenciaValidada = v.producto?.referencia ?? null;
-    const proVal = referenciaValidada && v.producto?.nombre
-      ? `${referenciaValidada} / ${v.producto.nombre}`
-      : (v.producto?.nombre ?? referenciaValidada ?? v.producto?.id ?? null);
+    const especial = v.producto?.id
+      ? (await this.getEspecialesPorProducto([v.producto.id], v.programacion?.hospitalId)).get(v.producto.id)
+      : undefined;
+    const referenciaValidada = especial?.referencia ?? v.producto?.referencia ?? null;
+    const nombreValidado = especial?.nombre ?? v.producto?.nombre ?? null;
+    const proVal = referenciaValidada && nombreValidado
+      ? `${referenciaValidada} / ${nombreValidado}`
+      : (nombreValidado ?? referenciaValidada ?? v.producto?.id ?? null);
 
     return {
       id: v.id,
@@ -621,6 +726,30 @@ export class RemisionesRepositoryService {
     });
   }
 
+  /** Validar un consumo (Det_Consumo): crea el registro de validación (ValConsumo). */
+  async createValConsumo(detConsumoId: string, dto: CreateValConsumoDto, usuarioId: string) {
+    const consumo = await this.prisma.detConsumo.findUnique({
+      where: { id: detConsumoId },
+      select: { programacionId: true, remisionId: true, productoId: true },
+    });
+    if (!consumo) throw new NotFoundException('Consumo no encontrado');
+    return this.prisma.valConsumo.create({
+      data: {
+        id: randomUUID(),
+        usuarioId,
+        marcaTiempo: nowMexico(),
+        programacionId: consumo.programacionId,
+        remisionId: consumo.remisionId,
+        detConsumoId,
+        sedeConsumoId: dto.sedeConsumoId,
+        prodRealConsumido: dto.prodRealConsumido,
+        productoId: dto.prodRealConsumido ? consumo.productoId : dto.productoId,
+        prodDeTspine: dto.prodDeTspine,
+        observacionesAlm: dto.observacionesAlm,
+      },
+    });
+  }
+
   async createValConsumoLote(dto: CreateValConsumoLoteDto, usuarioId: string) {
     return this.prisma.valConsumoLote.create({
       data: {
@@ -628,6 +757,7 @@ export class RemisionesRepositoryService {
         valConsumoId: dto.valConsumoId,
         sedeId: dto.sedeId,
         almacenId: dto.almacenId,
+        loteId: dto.loteId,
         cantidad: dto.cantidad,
         registradoPorId: usuarioId,
         marcaTiempo: nowMexico(),
@@ -700,7 +830,8 @@ export class RemisionesRepositoryService {
         quieresDesglosar: true,
         seleccioneTipo: true,
         tecnico: { select: { nombreCompleto: true } },
-        detalles: { select: { valor: true } },
+        remision: { select: { id: true, numRemision: true } },
+        detalles: { select: { valor: true, remision: { select: { id: true, numRemision: true } } } },
         programacion: {
           select: {
             id: true,
@@ -791,6 +922,13 @@ export class RemisionesRepositoryService {
 
     const folio = dt.programacion?.numProgram ?? dt.programacion?.id ?? null;
 
+    // Remisión sobre la que se aplicó la comisión: la propia del registro (Técnicos/Plus), o si es
+    // Inversionistas con desglose por producto, las remisiones (sin repetir) de cada línea.
+    const remisionesInvolucradas = dt.remision
+      ? [dt.remision.numRemision ?? dt.remision.id]
+      : [...new Set(dt.detalles.map(d => d.remision?.numRemision ?? d.remision?.id).filter((v): v is string => !!v))];
+    const numRemision = remisionesInvolucradas.length > 0 ? remisionesInvolucradas.join(', ') : null;
+
     // EJECUCIÓN DEL PAGO = REF_ROWS("PagosEjecución", "PROGRAMACIÓN")
     const MESES_ES = [
       'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -876,6 +1014,7 @@ export class RemisionesRepositoryService {
       id: dt.id,
       nombreContacto: dt.tecnico?.nombreCompleto ?? null,
       numProgram: folio,
+      numRemision,
       programacionId: dt.programacion?.id ?? null,
       fechaQx: dt.programacion?.fechaQx ?? null,
       doctor: dt.programacion?.medicos.map(m => m.medico.nombreCompleto).join(', ') || null,
@@ -904,29 +1043,68 @@ export class RemisionesRepositoryService {
       select: {
         id: true,
         categoria: true,
+        tipo: true,
         vrComision: true,
+        tecnicoId: true,
         tecnico: { select: { nombreCompleto: true } },
-        detalles: { select: { valor: true } },
+        remision: { select: { id: true, numRemision: true } },
+        detalles: {
+          select: {
+            valor: true,
+            remision: { select: { id: true, numRemision: true } },
+            producto: { select: { nombre: true, referencia: true } },
+          },
+        },
       },
-      orderBy: { id: 'asc' },
+      // Del más antiguo al más reciente — si a un mismo técnico/inversionista se le asignó más de
+      // una comisión, sus líneas quedan en el mismo orden en que se agregaron (ver loop de abajo).
+      orderBy: { marcaTiempo: 'asc' },
     });
 
-    const grupos = new Map<string, { categoria: string; items: { id: string; tecnico: string | null; monto: number }[] }>();
+    type DetalleLinea = { comisionId: string; tipo: string | null; remisionLabel: string | null; productoLabel: string | null; valor: number };
+    type ItemTecnico = { id: string; tecnico: string | null; monto: number; detalle: DetalleLinea[] };
+    const grupos = new Map<string, { categoria: string; items: Map<string, ItemTecnico> }>();
 
     for (const r of registros) {
       const cat = r.categoria?.trim() || 'Sin categoría';
-      if (!grupos.has(cat)) {
-        grupos.set(cat, { categoria: cat, items: [] });
+      if (!grupos.has(cat)) grupos.set(cat, { categoria: cat, items: new Map() });
+      const itemsPorTecnico = grupos.get(cat)!.items;
+
+      // Varias "Agregar Comisión" para el mismo técnico/inversionista dentro de la misma categoría
+      // se fusionan en un solo renglón (mismo monto sumado) — el detalle por remisión/producto se
+      // conserva aparte para no perder esa trazabilidad al fusionar.
+      const tecnicoKey = r.tecnicoId ?? r.id;
+      if (!itemsPorTecnico.has(tecnicoKey)) {
+        itemsPorTecnico.set(tecnicoKey, { id: r.id, tecnico: r.tecnico?.nombreCompleto ?? null, monto: 0, detalle: [] });
       }
-      const montoDesglose = r.detalles.reduce((sum, d) => sum + Number(d.valor ?? 0), 0);
-      grupos.get(cat)!.items.push({
-        id: r.id,
-        tecnico: r.tecnico?.nombreCompleto ?? null,
-        monto: Number(r.vrComision ?? 0) + montoDesglose,
-      });
+      const item = itemsPorTecnico.get(tecnicoKey)!;
+
+      if (r.detalles.length > 0) {
+        for (const d of r.detalles) {
+          const valor = Number(d.valor ?? 0);
+          item.monto += valor;
+          item.detalle.push({
+            comisionId: r.id,
+            tipo: r.tipo,
+            remisionLabel: d.remision?.numRemision ?? d.remision?.id ?? null,
+            productoLabel: d.producto?.nombre ?? d.producto?.referencia ?? null,
+            valor,
+          });
+        }
+      } else {
+        const valor = Number(r.vrComision ?? 0);
+        item.monto += valor;
+        item.detalle.push({
+          comisionId: r.id,
+          tipo: r.tipo,
+          remisionLabel: r.remision?.numRemision ?? r.remision?.id ?? null,
+          productoLabel: null,
+          valor,
+        });
+      }
     }
 
-    return [...grupos.values()];
+    return [...grupos.values()].map(g => ({ categoria: g.categoria, items: [...g.items.values()] }));
   }
 
   private static readonly MESES_ES = [
@@ -944,6 +1122,7 @@ export class RemisionesRepositoryService {
     existeProgramacion: true,
     cubrimientoId: true,
     tarifaId: true,
+    contactoId: true,
     usuario: { select: { nombreCompleto: true } },
     programacion: { select: { numProgram: true, id: true } },
     cubrimiento: { select: { nombre: true } },
@@ -962,6 +1141,7 @@ export class RemisionesRepositoryService {
     existeProgramacion: boolean | null;
     cubrimientoId: string | null;
     tarifaId: string | null;
+    contactoId: string | null;
     usuario: { nombreCompleto: string } | null;
     programacion: { numProgram: string | null; id: string } | null;
     cubrimiento: { nombre: string } | null;
@@ -981,6 +1161,7 @@ export class RemisionesRepositoryService {
       existeProgramacion: r.existeProgramacion,
       cubrimientoId: r.cubrimientoId,
       tarifaId: r.tarifaId,
+      contactoId: r.contactoId,
       usuario: r.usuario?.nombreCompleto ?? null,
       cubrimiento: r.cubrimiento?.nombre ?? null,
       tarifa: r.tarifa?.nombre ?? null,
@@ -988,6 +1169,23 @@ export class RemisionesRepositoryService {
       sedeOrigen: r.sedeOrigen?.nombre ?? null,
       anio: r.fecha ? new Date(r.fecha).getUTCFullYear() : null,
       mes: mesNum ? `${mesNum}-. ${RemisionesRepositoryService.MESES_ES[mesNum - 1]}` : null,
+    };
+  }
+
+  // Para autocompletar el campo Tarifa al editar una requisición: si el Tercero del contacto
+  // (hospital) tiene tarifa propia asignada, se usa esa. Mismo patrón que
+  // CotizacionesService.getTerceroTarifa.
+  async getTerceroTarifa(terceroId: string) {
+    const tercero = await this.prisma.tercero.findUnique({
+      where: { id: terceroId },
+      select: {
+        tarifaId: true,
+        tarifa: { select: { nombre: true } },
+      },
+    });
+    return {
+      tarifaId: tercero?.tarifaId ?? null,
+      tarifaNombre: tercero?.tarifa?.nombre ?? null,
     };
   }
 
@@ -1145,6 +1343,13 @@ export class RemisionesRepositoryService {
 
   async createRemision(dto: CreateRemisionDto, usuarioId: string) {
     const id = await this.generateRemisionId(dto.programacionId);
+    // dto.firma llega como data URL en base64 (ver SignaturePad en el frontend) — hay que guardarla
+    // como archivo en uploads/firmas/ y persistir esa ruta relativa, igual que ya hace
+    // createDocumentoProgramacion con los PDFs. Antes se guardaba el base64 crudo directo en la
+    // columna `firma`, así que uploadFileExists() (usado para armar firmaDisponible en getById)
+    // siempre daba false — la firma nunca se podía volver a mostrar aunque sí se hubiera dibujado.
+    const extension = extensionFromMime(mimeFromDataUrl(dto.firma));
+    const rutaFirma = saveUploadFile('firmas', `${id}.${extension}`, decodeBase64DataUrl(dto.firma));
     return this.prisma.remision.create({
       data: {
         id,
@@ -1163,10 +1368,61 @@ export class RemisionesRepositoryService {
         tieneDcto: dto.tieneDcto ?? false,
         porcentajeDcto: dto.porcentajeDcto,
         vrDctoPesos: dto.vrDctoPesos,
-        firma: dto.firma,
+        firma: rutaFirma,
         estado: 'Tramitada',
         status: true,
       },
+    });
+  }
+
+  /**
+   * Consumos (Det_Consumo) agregados de una sola vez a una remisión — usado tanto al crearla
+   * (donde el estado siempre es Tramitada y no tiene factura) como al importarlos por paquete/
+   * cotizaciones desde Editar Remisión, por eso valida estado y factura igual que addDetConsumo.
+   */
+  async createDetConsumosBulk(remisionId: string, items: { productoId: string; cantidad: number; valorUnitario: number; observaciones?: string }[]) {
+    const remision = await this.prisma.remision.findUnique({ where: { id: remisionId }, select: { estado: true, programacionId: true } });
+    if (!remision) throw new NotFoundException('Remisión no encontrada');
+    if (remision.estado !== 'Tramitada' && remision.estado !== 'Descorche') {
+      throw new BadRequestException('Solo se pueden editar consumos de remisiones en estado Tramitada o Descorche');
+    }
+    const facturasCount = await this.prisma.factura.count({ where: { remisionId } });
+    if (facturasCount > 0) throw new BadRequestException('No se pueden editar los consumos de una remisión que ya tiene factura asociada');
+    return this.prisma.detConsumo.createMany({
+      data: items.map(it => ({
+        id: randomUUID(),
+        remisionId,
+        programacionId: remision.programacionId,
+        productoId: it.productoId,
+        cantidad: it.cantidad,
+        valorUnitario: it.valorUnitario,
+        valor: it.cantidad * it.valorUnitario,
+        observaciones: it.observaciones,
+      })),
+    });
+  }
+
+  /**
+   * Técnicos asociados (Rem_Tecnicos) agregados de una sola vez a una remisión — usado tanto al
+   * crearla (estado siempre Tramitada) como al agregar varios desde Editar Remisión, por eso
+   * valida estado igual que addRemTecnico.
+   */
+  async createRemTecnicosBulk(remisionId: string, tecnicoIds: string[], usuarioId: string) {
+    const remision = await this.prisma.remision.findUnique({ where: { id: remisionId }, select: { estado: true, programacionId: true } });
+    if (!remision) throw new NotFoundException('Remisión no encontrada');
+    if (remision.estado !== 'Tramitada' && remision.estado !== 'Descorche') {
+      throw new BadRequestException('Solo se pueden editar técnicos de remisiones en estado Tramitada o Descorche');
+    }
+    const now = nowMexico();
+    return this.prisma.remTecnico.createMany({
+      data: tecnicoIds.map(tecnicoId => ({
+        id: randomUUID(),
+        remisionId,
+        programacionId: remision.programacionId,
+        tecnicoId,
+        registradoPorId: usuarioId,
+        fechaRegistro: now,
+      })),
     });
   }
 
@@ -1220,46 +1476,104 @@ export class RemisionesRepositoryService {
     return this.prisma.detRequisicion.update({ where: { id }, data });
   }
 
-  async searchLotes(search?: string) {
-    return this.prisma.lote.findMany({
-      where: search?.trim() ? { lote: { contains: search, mode: 'insensitive' as const } } : {},
-      select: { id: true, lote: true },
-      orderBy: { lote: 'asc' },
-      take: 20,
-    });
+  async deleteDetRequisicion(id: string) {
+    await this.prisma.detRequisicion.delete({ where: { id } });
   }
 
-  async searchProductos(search?: string, tarifaId?: string) {
-    const productos = await this.prisma.producto.findMany({
-      where: {
-        ...(search?.trim() ? { nombre: { contains: search, mode: 'insensitive' as const } } : {}),
-        ...(tarifaId ? { tarifasDenegadas: { none: { tarifaId } } } : {}),
-      },
-      select: {
-        id: true,
-        nombre: true,
-        referencia: true,
-        particulares: true,
-        hospitales: true,
-        distribuidor: true,
-        aseguradora: true,
-        sistema: { select: { sistema: true } },
-        categoria: { select: { categoria: true } },
-      },
-      orderBy: { nombre: 'asc' },
-      take: 20,
-    });
+  async searchLotes(search?: string) {
+    const searchTerm = search?.trim();
+    // SQL crudo (no where/contains de Prisma) por lo mismo que searchProductos: se necesita
+    // unaccent() para que "Solucion" también encuentre "Solución" — Prisma no tiene equivalente.
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND unaccent(l.lote) ILIKE unaccent(${'%' + searchTerm + '%'})`
+      : Prisma.empty;
 
-    return productos.map(p => ({
+    return this.prisma.$queryRaw<{ id: string; lote: string | null }[]>`
+      SELECT l.id_lote AS id, l.lote
+      FROM lotes l
+      WHERE 1=1
+      ${searchFilter}
+      ORDER BY l.lote ASC
+      LIMIT 20
+    `;
+  }
+
+  // Misma funcionalidad que CotizacionesService.searchProductos (búsqueda sin acentos por
+  // nombre/referencia/sistema, límite alto en modo "ver todas" sin término, exclusión de
+  // denegados por tarifa); a diferencia de ahí, por defecto no se restringe por categoría (una
+  // requisición puede pedir cualquier tipo de producto, no solo lo "cotizable") y no se resuelven
+  // nombres/referencias especiales por hospital — soloCotizables=true activa ese mismo filtro de
+  // categoría para los llamadores que sí lo necesitan (ej. "Pro Val" al validar un consumo).
+  async searchProductos(search?: string, tarifaId?: string, soloCotizables?: boolean) {
+    const searchTerm = search?.trim();
+
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND (
+          unaccent(p.nombre) ILIKE unaccent(${'%' + searchTerm + '%'})
+          OR unaccent(p.referencia) ILIKE unaccent(${'%' + searchTerm + '%'})
+          OR unaccent(s.sistema) ILIKE unaccent(${'%' + searchTerm + '%'})
+        )`
+      : Prisma.empty;
+    const tarifaFilter = tarifaId
+      ? Prisma.sql`AND NOT EXISTS (
+          SELECT 1 FROM producto_tarifas_denegadas ptd
+          WHERE ptd.producto_id = p.id_producto AND ptd.tarifa_id = ${tarifaId}
+        )`
+      : Prisma.empty;
+    const categoriaFilter = soloCotizables
+      ? Prisma.sql`AND p.categoria_id IN (${Prisma.join(CATEGORIAS_COTIZABLES)})`
+      : Prisma.empty;
+
+    const productosRaw = await this.prisma.$queryRaw<{
+      id: string;
+      nombre: string | null;
+      referencia: string | null;
+      sistema: string | null;
+      categoria: string | null;
+      particulares: Prisma.Decimal | null;
+      hospitales: Prisma.Decimal | null;
+      distribuidor: Prisma.Decimal | null;
+      aseguradora: Prisma.Decimal | null;
+    }[]>`
+      SELECT p.id_producto AS id, p.nombre, p.referencia, s.sistema, p.categoria_id AS categoria,
+             p.particulares, p.hospitales, p.distribuidor, p.aseguradora
+      FROM productos p
+      LEFT JOIN sistemas s ON s.id_producto = p.sistema_id
+      WHERE 1=1
+      ${searchFilter}
+      ${tarifaFilter}
+      ${categoriaFilter}
+      ORDER BY p.nombre ASC
+      -- A diferencia de Cotizaciones (200 sin término, acotado a 5 categorías "cotizables"), acá
+      -- no hay filtro de categoría — un límite tan alto mostraría demasiada variedad de una,
+      -- así que se deja un tope fijo más chico, con o sin término de búsqueda.
+      LIMIT 30
+    `;
+
+    // Precio específico de la tarifa (ListaPrecio, mismo mecanismo que ya usa Cotizaciones) —
+    // aparte de las 4 columnas genéricas por categoría de cubrimiento, que se quedan como
+    // respaldo en el frontend para cuando un producto no tiene precio cargado para esta tarifa
+    // puntual.
+    let precioPorProducto = new Map<string, number | null>();
+    if (tarifaId && productosRaw.length > 0) {
+      const listasPrecio = await this.prisma.listaPrecio.findMany({
+        where: { subtarifaId: tarifaId, productoId: { in: productosRaw.map(p => p.id) } },
+        select: { productoId: true, precio: true },
+      });
+      precioPorProducto = new Map(listasPrecio.filter(lp => lp.productoId !== null).map(lp => [lp.productoId as string, lp.precio !== null ? Number(lp.precio) : null]));
+    }
+
+    return productosRaw.map(p => ({
       id: p.id,
       nombre: p.nombre,
       referencia: p.referencia,
-      particulares: p.particulares,
-      hospitales: p.hospitales,
-      distribuidor: p.distribuidor,
-      aseguradora: p.aseguradora,
-      sistema: p.sistema?.sistema ?? null,
-      categoria: p.categoria?.categoria ?? null,
+      particulares: p.particulares !== null ? Number(p.particulares) : null,
+      hospitales: p.hospitales !== null ? Number(p.hospitales) : null,
+      distribuidor: p.distribuidor !== null ? Number(p.distribuidor) : null,
+      aseguradora: p.aseguradora !== null ? Number(p.aseguradora) : null,
+      sistema: p.sistema ?? null,
+      categoria: p.categoria ?? null,
+      precioSugerido: precioPorProducto.get(p.id) ?? null,
     }));
   }
 
@@ -1471,7 +1785,13 @@ export class RemisionesRepositoryService {
             consumo: true,
             observaciones: true,
             sede:     { select: { nombre: true } },
-            hospital: { select: { nombre: true, ciudadCat: { select: { nombre: true } } } },
+            hospital: {
+              select: {
+                nombre: true,
+                ciudadCat: { select: { nombre: true } },
+                tercero: { select: { id: true, nombreCompleto: true } },
+              },
+            },
             medicos:  { select: { medico: { select: { nombreCompleto: true } } } },
             detConsumos: { select: { _count: { select: { valConsumos: true } } } },
           },
@@ -1791,6 +2111,119 @@ export class RemisionesRepositoryService {
     });
   }
 
+  /** Agregar un técnico a una remisión ya existente — misma restricción de estado que updateRemision. */
+  async addRemTecnico(remisionId: string, tecnicoId: string, usuarioId: string) {
+    const remision = await this.prisma.remision.findUnique({ where: { id: remisionId }, select: { estado: true, programacionId: true } });
+    if (!remision) throw new NotFoundException('Remisión no encontrada');
+    if (remision.estado !== 'Tramitada' && remision.estado !== 'Descorche') {
+      throw new BadRequestException('Solo se pueden editar técnicos de remisiones en estado Tramitada o Descorche');
+    }
+    return this.prisma.remTecnico.create({
+      data: {
+        id: randomUUID(),
+        remisionId,
+        programacionId: remision.programacionId,
+        tecnicoId,
+        registradoPorId: usuarioId,
+        fechaRegistro: nowMexico(),
+      },
+    });
+  }
+
+  /**
+   * Quitar un técnico asociado a una remisión ya existente — misma restricción de estado que
+   * updateRemision, más bloqueo si es el último técnico (una remisión no puede quedar sin
+   * ninguno asignado).
+   */
+  async removeRemTecnico(relId: string) {
+    const relacion = await this.prisma.remTecnico.findUnique({ where: { id: relId }, select: { remisionId: true, remision: { select: { estado: true } } } });
+    if (!relacion) throw new NotFoundException('Técnico asociado no encontrado');
+    if (relacion.remision?.estado !== 'Tramitada' && relacion.remision?.estado !== 'Descorche') {
+      throw new BadRequestException('Solo se pueden editar técnicos de remisiones en estado Tramitada o Descorche');
+    }
+    if (relacion.remisionId) {
+      const count = await this.prisma.remTecnico.count({ where: { remisionId: relacion.remisionId } });
+      if (count <= 1) throw new BadRequestException('Debe haber al menos un técnico asociado a la remisión');
+    }
+    await this.prisma.remTecnico.delete({ where: { id: relId } });
+  }
+
+  /**
+   * Agregar un consumo a una remisión ya existente — misma restricción de estado que
+   * updateRemision, más bloqueo si la remisión ya tiene factura (rompería el cálculo de
+   * facturado/por facturar, que se basa en los Det_Consumo vigentes).
+   */
+  async addDetConsumo(remisionId: string, dto: { productoId: string; cantidad: number; valorUnitario: number; observaciones?: string }) {
+    const remision = await this.prisma.remision.findUnique({ where: { id: remisionId }, select: { estado: true, programacionId: true } });
+    if (!remision) throw new NotFoundException('Remisión no encontrada');
+    if (remision.estado !== 'Tramitada' && remision.estado !== 'Descorche') {
+      throw new BadRequestException('Solo se pueden editar consumos de remisiones en estado Tramitada o Descorche');
+    }
+    const facturasCount = await this.prisma.factura.count({ where: { remisionId } });
+    if (facturasCount > 0) throw new BadRequestException('No se pueden editar los consumos de una remisión que ya tiene factura asociada');
+    return this.prisma.detConsumo.create({
+      data: {
+        id: randomUUID(),
+        remisionId,
+        programacionId: remision.programacionId,
+        productoId: dto.productoId,
+        cantidad: dto.cantidad,
+        valorUnitario: dto.valorUnitario,
+        valor: dto.cantidad * dto.valorUnitario,
+        observaciones: dto.observaciones,
+      },
+    });
+  }
+
+  /** Editar un consumo de una remisión ya existente — mismas restricciones que addDetConsumo. */
+  async updateDetConsumo(consumoId: string, dto: { cantidad?: number; valorUnitario?: number; observaciones?: string }) {
+    const consumo = await this.prisma.detConsumo.findUnique({
+      where: { id: consumoId },
+      select: { remisionId: true, cantidad: true, valorUnitario: true, remision: { select: { estado: true } } },
+    });
+    if (!consumo) throw new NotFoundException('Consumo no encontrado');
+    if (consumo.remision?.estado !== 'Tramitada' && consumo.remision?.estado !== 'Descorche') {
+      throw new BadRequestException('Solo se pueden editar consumos de remisiones en estado Tramitada o Descorche');
+    }
+    if (consumo.remisionId) {
+      const facturasCount = await this.prisma.factura.count({ where: { remisionId: consumo.remisionId } });
+      if (facturasCount > 0) throw new BadRequestException('No se pueden editar los consumos de una remisión que ya tiene factura asociada');
+    }
+    const cantidad = dto.cantidad ?? Number(consumo.cantidad ?? 0);
+    const valorUnitario = dto.valorUnitario ?? Number(consumo.valorUnitario ?? 0);
+    return this.prisma.detConsumo.update({
+      where: { id: consumoId },
+      data: {
+        cantidad: dto.cantidad,
+        valorUnitario: dto.valorUnitario,
+        valor: cantidad * valorUnitario,
+        observaciones: dto.observaciones,
+      },
+    });
+  }
+
+  /**
+   * Eliminar un consumo de una remisión ya existente — mismas restricciones que addDetConsumo,
+   * más bloqueo si es el último consumo (una remisión no puede quedar sin ninguno).
+   */
+  async removeDetConsumo(consumoId: string) {
+    const consumo = await this.prisma.detConsumo.findUnique({
+      where: { id: consumoId },
+      select: { remisionId: true, remision: { select: { estado: true } } },
+    });
+    if (!consumo) throw new NotFoundException('Consumo no encontrado');
+    if (consumo.remision?.estado !== 'Tramitada' && consumo.remision?.estado !== 'Descorche') {
+      throw new BadRequestException('Solo se pueden editar consumos de remisiones en estado Tramitada o Descorche');
+    }
+    if (consumo.remisionId) {
+      const facturasCount = await this.prisma.factura.count({ where: { remisionId: consumo.remisionId } });
+      if (facturasCount > 0) throw new BadRequestException('No se pueden editar los consumos de una remisión que ya tiene factura asociada');
+      const count = await this.prisma.detConsumo.count({ where: { remisionId: consumo.remisionId } });
+      if (count <= 1) throw new BadRequestException('Debe haber al menos un consumo en la remisión');
+    }
+    await this.prisma.detConsumo.delete({ where: { id: consumoId } });
+  }
+
   /**
    * Solo se puede eliminar una remisión en estado Tramitada/Descorche, sin factura, y sin
    * consumos/técnicos/comisiones asociados (misma restricción de estado que updateRemision).
@@ -1833,6 +2266,7 @@ export class RemisionesRepositoryService {
         cirugiaRealizada: true,
         porcentajeDcto: true,
         vrDctoPesos: true,
+        impuestos: true,
         tieneFactura: true,
         noFactura: true,
         estadoFactura: true,
@@ -1846,9 +2280,22 @@ export class RemisionesRepositoryService {
       orderBy: { creadoEn: 'asc' },
     });
 
-    return remisiones.map(({ detConsumos, ...r }) => ({
-      ...r,
-      subtotal: detConsumos.reduce((sum, d) => sum + Number(d.valor ?? 0), 0),
-    }));
+    // Mismo cálculo que getById (SubTotal → Total Antes Imp. → IVA/Retención → Total) — antes esta
+    // lista solo exponía el subtotal crudo de consumos, sin descuento ni impuestos aplicados, lo que
+    // no coincidía con el "Total" que sí se muestra en el detalle de la remisión.
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    return remisiones.map(({ detConsumos, impuestos, ...r }) => {
+      const subtotal = detConsumos.reduce((sum, d) => sum + Number(d.valor ?? 0), 0);
+      const descuentos = subtotal * (Number(r.porcentajeDcto ?? 0) / 100) + Number(r.vrDctoPesos ?? 0);
+      const totalAntesImp = round2(subtotal - descuentos);
+      const normImpuestos = (impuestos ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const iva = round2((normImpuestos === 'i.v.a.' || normImpuestos === 'todos') ? totalAntesImp * 0.16 : 0);
+      const retencion = round2((normImpuestos === 'retencion' || normImpuestos === 'todos') ? totalAntesImp * 0.106667 : 0);
+      return {
+        ...r,
+        subtotal,
+        total: round2(totalAntesImp + iva - retencion),
+      };
+    });
   }
 }

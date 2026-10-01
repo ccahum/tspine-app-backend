@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { ClasificacionTercero } from '@prisma/client';
 import { RemisionesRepositoryService } from '@app/shared/repositories/remisiones/remisiones.repository.service';
 import { RemisionQueryDto } from './dto/remision-query.dto';
 import { CreateComisionDto } from './dto/create-comision.dto';
@@ -9,8 +10,11 @@ import { UpdateDetRequisicionDto } from './dto/update-det-requisicion.dto';
 import { CreateRemisionDto } from './dto/create-remision.dto';
 import { UpdateRemisionDto } from './dto/update-remision.dto';
 import { CreateTecnicoSugeridoDto } from './dto/create-tecnico-sugerido.dto';
+import { CreateValConsumoDto } from './dto/create-val-consumo.dto';
 import { CreateValConsumoLoteDto } from './dto/create-val-consumo-lote.dto';
 import { CreateDocumentoProgramacionDto } from './dto/create-documento-programacion.dto';
+import { CreateDetConsumoDto } from './dto/create-det-consumo.dto';
+import { UpdateDetConsumoDto } from './dto/update-det-consumo.dto';
 
 @Injectable()
 export class RemisionesService {
@@ -24,8 +28,8 @@ export class RemisionesService {
     return this.repo.createComision(dto);
   }
 
-  searchTecnicos(search?: string) {
-    return this.repo.searchTecnicos(search);
+  searchTecnicos(search?: string, clasificacion?: ClasificacionTercero) {
+    return this.repo.searchTecnicos(search, clasificacion);
   }
 
   searchEmpresas(search?: string) {
@@ -112,6 +116,10 @@ export class RemisionesService {
     return this.repo.findAlmacenes(sedeId);
   }
 
+  createValConsumo(detConsumoId: string, dto: CreateValConsumoDto, usuarioId: string) {
+    return this.repo.createValConsumo(detConsumoId, dto, usuarioId);
+  }
+
   createValConsumoLote(dto: CreateValConsumoLoteDto, usuarioId: string) {
     return this.repo.createValConsumoLote(dto, usuarioId);
   }
@@ -134,6 +142,10 @@ export class RemisionesService {
 
   getRequisicionDetalle(id: string) {
     return this.repo.getRequisicionDetalle(id);
+  }
+
+  getTerceroTarifa(terceroId: string) {
+    return this.repo.getTerceroTarifa(terceroId);
   }
 
   updateRequisicion(id: string, dto: UpdateRequisicionDto) {
@@ -164,6 +176,14 @@ export class RemisionesService {
     return this.repo.createRemision(dto, usuarioId);
   }
 
+  createDetConsumosBulk(remisionId: string, items: { productoId: string; cantidad: number; valorUnitario: number; observaciones?: string }[]) {
+    return this.repo.createDetConsumosBulk(remisionId, items);
+  }
+
+  createRemTecnicosBulk(remisionId: string, tecnicoIds: string[], usuarioId: string) {
+    return this.repo.createRemTecnicosBulk(remisionId, tecnicoIds, usuarioId);
+  }
+
   findDetallesByRequisicion(requisicionId: string) {
     return this.repo.findDetallesByRequisicion(requisicionId);
   }
@@ -172,12 +192,16 @@ export class RemisionesService {
     return this.repo.updateDetRequisicion(id, dto);
   }
 
+  deleteDetRequisicion(id: string) {
+    return this.repo.deleteDetRequisicion(id);
+  }
+
   searchLotes(search?: string) {
     return this.repo.searchLotes(search);
   }
 
-  searchProductos(search?: string, tarifaId?: string) {
-    return this.repo.searchProductos(search, tarifaId);
+  searchProductos(search?: string, tarifaId?: string, soloCotizables?: boolean) {
+    return this.repo.searchProductos(search, tarifaId, soloCotizables);
   }
 
   createDetRequisicion(dto: CreateDetRequisicionDto) {
@@ -218,6 +242,26 @@ export class RemisionesService {
 
   updateRemision(id: string, dto: UpdateRemisionDto) {
     return this.repo.updateRemision(id, dto);
+  }
+
+  addRemTecnico(remisionId: string, tecnicoId: string, usuarioId: string) {
+    return this.repo.addRemTecnico(remisionId, tecnicoId, usuarioId);
+  }
+
+  removeRemTecnico(relId: string) {
+    return this.repo.removeRemTecnico(relId);
+  }
+
+  addDetConsumo(remisionId: string, dto: CreateDetConsumoDto) {
+    return this.repo.addDetConsumo(remisionId, dto);
+  }
+
+  updateDetConsumo(consumoId: string, dto: UpdateDetConsumoDto) {
+    return this.repo.updateDetConsumo(consumoId, dto);
+  }
+
+  removeDetConsumo(consumoId: string) {
+    return this.repo.removeDetConsumo(consumoId);
   }
 
   deleteRemision(id: string) {

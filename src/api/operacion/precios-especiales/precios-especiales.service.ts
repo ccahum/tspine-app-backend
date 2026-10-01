@@ -6,6 +6,11 @@ import { PrecioEspecialQueryDto } from './dto/precio-especial-query.dto';
 import { CreatePrecioEspecialDto } from './dto/create-precio-especial.dto';
 import { UpdatePrecioEspecialDto } from './dto/update-precio-especial.dto';
 
+// Mismas 5 categorías "cotizables" que CotizacionesService.searchProductos / searchProductos de
+// Remisiones (soloCotizables) — un precio especial solo aplica a productos que de verdad se
+// cotizan/consumen, no a Instrumental/Equipo/Tapa/Utilería, etc.
+const CATEGORIAS_COTIZABLES = ['Renta', 'Implante', 'Consumible', 'Biológico', 'Refrigerados'];
+
 const PRECIO_ESPECIAL_SELECT = {
   id: true,
   productoId: true,
@@ -58,7 +63,7 @@ export class PreciosEspecialesService {
     return this.prisma.$queryRaw<{ id: string; nombre: string | null; referencia: string | null }[]>`
       SELECT p.id_producto AS id, p.nombre, p.referencia
       FROM productos p
-      WHERE true
+      WHERE p.categoria_id IN (${Prisma.join(CATEGORIAS_COTIZABLES)})
       ${searchFilter}
       ORDER BY p.nombre ASC
       LIMIT 50
@@ -130,14 +135,23 @@ export class PreciosEspecialesService {
   async findAll(query: PrecioEspecialQueryDto) {
     const { page = 1, limit = 300, search } = query;
     const skip = (page - 1) * limit;
+    const searchTerm = search?.trim();
 
     const where: any = {};
-    if (search?.trim()) {
-      where.OR = [
-        { producto: { referencia: { contains: search, mode: 'insensitive' } } },
-        { producto: { nombre: { contains: search, mode: 'insensitive' } } },
-        { contacto: { nombreCompleto: { contains: search, mode: 'insensitive' } } },
-      ];
+    if (searchTerm) {
+      // SQL crudo con unaccent() para que la búsqueda ignore acentos además de mayúsculas/minúsculas
+      // (Prisma mode:'insensitive' solo cubre mayúsculas/minúsculas) — mismo criterio que
+      // searchProductos/searchContactos de este mismo archivo.
+      const matches = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT pe.id
+        FROM precios_especiales pe
+        LEFT JOIN productos p ON p.id_producto = pe.producto_id
+        LEFT JOIN terceros t ON t.id = pe.contacto_id
+        WHERE unaccent(COALESCE(p.referencia, '')) ILIKE unaccent(${'%' + searchTerm + '%'})
+           OR unaccent(COALESCE(p.nombre, '')) ILIKE unaccent(${'%' + searchTerm + '%'})
+           OR unaccent(COALESCE(t.nombre_completo, '')) ILIKE unaccent(${'%' + searchTerm + '%'})
+      `;
+      where.id = { in: matches.map(m => m.id) };
     }
 
     const [data, total] = await this.prisma.$transaction([

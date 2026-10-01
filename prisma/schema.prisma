@@ -1225,6 +1225,7 @@ model NotaCredito {
 model DetTecnico {
   id               String    @id @map("id_det_tecnico")
   programacionId   String?   @map("programacion_id")
+  marcaTiempo      DateTime? @map("marca_tiempo")
   categoria        String?
   tipo             String?
   tecnicoId        String?   @map("tecnico_id")

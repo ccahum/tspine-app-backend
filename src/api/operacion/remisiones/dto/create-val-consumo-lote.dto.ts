@@ -17,6 +17,11 @@ export class CreateValConsumoLoteDto {
   @IsNotEmpty()
   almacenId!: string;
 
+  @ApiProperty({ description: 'Lote consumido' })
+  @IsString()
+  @IsNotEmpty()
+  loteId!: string;
+
   @ApiProperty()
   @IsInt()
   @Min(1)

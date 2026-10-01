@@ -112,6 +112,9 @@ async function main() {
   const productosSet = new Set((await prisma.producto.findMany({ select: { id: true } })).map(p => p.id));
   console.log(`  ✓ ${productosSet.size} productos`);
 
+  const detCotizaExistentesSet = new Set((await prisma.detCotiza.findMany({ select: { id: true } })).map(d => d.id));
+  console.log(`  ✓ ${detCotizaExistentesSet.size} detalles de cotización ya existentes`);
+
   // ── [2/3] Análisis previo ─────────────────────────────────────────────────
   console.log('\n[2/3] Analizando CSV...');
 
@@ -157,15 +160,18 @@ async function main() {
   printAnalysis('Hospital',   hospitalesNR);
   printAnalysis('Producto',   productosNR);
 
-  // ── [3/3] Truncar + Importar ───────────────────────────────────────────────
-  console.log('\n[3/3] Truncando det_cotiza...');
-  await prisma.detCotiza.deleteMany();
-  console.log('  ✓ Tabla limpia');
+  // ── [3/3] Importar (upsert) ───────────────────────────────────────────────
+  // Antes truncaba toda la tabla (deleteMany) y recreaba todo desde cero en cada corrida — eso
+  // borraba también los consumos que la app ya hubiera guardado en vivo (con su producto real
+  // bien ligado), ya que ninguno de ellos viene en este CSV. Con upsert por id (ID_DETALLE), esta
+  // corrida solo toca las filas que SÍ vienen en el CSV: las crea si son nuevas o las actualiza si
+  // ya existían (ej. para refrescar el match de producto tras poblar el catálogo) — nunca borra ni
+  // pisa nada que no esté en el CSV.
+  console.log('\n[3/3] Importando/actualizando detalle de cotizaciones (upsert)...');
 
-  console.log('\nImportando detalle de cotizaciones...');
-
-  let importados = 0;
-  let omitidos   = 0;
+  let creados     = 0;
+  let actualizados = 0;
+  let omitidos     = 0;
   const errores: string[] = [];
 
   for (const row of rows) {
@@ -181,37 +187,43 @@ async function main() {
     const productoRaw = getCol(row, 'DESCRIPCIÓN')?.trim();
     const productoId  = productoRaw && productosSet.has(productoRaw) ? productoRaw : null;
 
+    const data = {
+      cotizacionId,
+      marcaDeTiempo: parseDateTime(getCol(row, 'MARCA DE TIEMPO')),
+      hospitalId,
+      referencia:    getCol(row, 'REFERENCIA')?.trim() || null,
+      productoId,
+      cantidad:      parseDecimal(getCol(row, 'CANTIDAD')),
+      valorUnitario: parseDecimal(getCol(row, 'VALOR UNITARIO')),
+      valor:         parseDecimal(getCol(row, 'VALOR')),
+      observaciones: getCol(row, 'OBSERVACIONES')?.trim() || null,
+      sede:          getCol(row, 'SEDE')?.trim() || null,
+      usuario:       getCol(row, 'USUARIO')?.trim() || null,
+    };
+
     try {
-      await prisma.detCotiza.create({
-        data: {
-          id,
-          cotizacionId,
-          marcaDeTiempo: parseDateTime(getCol(row, 'MARCA DE TIEMPO')),
-          hospitalId,
-          referencia:    getCol(row, 'REFERENCIA')?.trim() || null,
-          productoId,
-          cantidad:      parseDecimal(getCol(row, 'CANTIDAD')),
-          valorUnitario: parseDecimal(getCol(row, 'VALOR UNITARIO')),
-          valor:         parseDecimal(getCol(row, 'VALOR')),
-          observaciones: getCol(row, 'OBSERVACIONES')?.trim() || null,
-          sede:          getCol(row, 'SEDE')?.trim() || null,
-          usuario:       getCol(row, 'USUARIO')?.trim() || null,
-        },
+      const existia = detCotizaExistentesSet.has(id);
+      await prisma.detCotiza.upsert({
+        where: { id },
+        create: { id, ...data },
+        update: data,
       });
-      importados++;
-      if (importados % 500 === 0) console.log(`  → ${importados} importados...`);
+      if (existia) actualizados++; else creados++;
+      const total = creados + actualizados;
+      if (total % 500 === 0) console.log(`  → ${total} procesados...`);
     } catch (err: any) {
       errores.push(`${id}: ${err.message}`);
     }
   }
 
-  console.log(`  → Total: ${importados} detalles de cotización creados`);
+  console.log(`  → Total: ${creados} creados, ${actualizados} actualizados`);
 
   // ── Resumen ───────────────────────────────────────────────────────────────
   console.log('\n' + '═'.repeat(60));
   console.log('  RESUMEN');
   console.log('═'.repeat(60));
-  console.log(`  ✓ Importados            : ${importados}`);
+  console.log(`  ✓ Creados               : ${creados}`);
+  console.log(`  ✓ Actualizados          : ${actualizados}`);
   console.log(`  ✗ Omitidos (sin ID)     : ${omitidos}`);
   console.log(`  ⚠ IDs duplicados en CSV : ${dupIds.length}`);
   console.log(`  ⚠ Cotización s/resolver : ${cotizacionesNR.size}`);
