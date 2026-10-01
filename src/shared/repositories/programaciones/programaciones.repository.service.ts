@@ -503,15 +503,22 @@ export class ProgramacionesRepositoryService {
   }
 
   async searchMedicos(search?: string) {
-    return this.prisma.tercero.findMany({
-      where: {
-        clasificaciones: { some: { clasificacion: 'DOCTOR' } },
-        ...(search?.trim() ? { nombreCompleto: { contains: search, mode: 'insensitive' as const } } : {}),
-      },
-      select: { id: true, nombreCompleto: true },
-      orderBy: { nombreCompleto: 'asc' },
-      take: 20,
-    });
+    const searchTerm = search?.trim();
+    // SQL crudo para que el buscador no distinga acentos ni mayúsculas/minúsculas (Prisma no tiene
+    // equivalente a unaccent()), mismo criterio que searchTerceros de Cotizaciones — y sin filtrar
+    // por sede/hospital, cualquier médico activo debe poder encontrarse desde cualquier sede.
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND unaccent(t.nombre_completo) ILIKE unaccent(${'%' + searchTerm + '%'})`
+      : Prisma.empty;
+
+    return this.prisma.$queryRaw<{ id: string; nombreCompleto: string }[]>`
+      SELECT t.id, t.nombre_completo AS "nombreCompleto"
+      FROM terceros t
+      WHERE EXISTS (SELECT 1 FROM tercero_clasificaciones tc WHERE tc.tercero_id = t.id AND tc.clasificacion = 'DOCTOR')
+      ${searchFilter}
+      ORDER BY t.nombre_completo ASC
+      LIMIT 20
+    `;
   }
 
   // Para el campo "Cotización" de Nueva Programación — se busca por el nombre del médico (texto
