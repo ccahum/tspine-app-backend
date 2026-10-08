@@ -185,6 +185,12 @@ export class CotizacionesService {
         contadorPaquetes: true,
         nivel: true,
         firma: true,
+        firmadoEn: true,
+        firmadoPor: { select: { nombreCompleto: true } },
+        ediciones: {
+          orderBy: { editadoEn: 'asc' },
+          select: { editadoEn: true, usuario: { select: { nombreCompleto: true } } },
+        },
         programacionId: true,
       },
     });
@@ -204,7 +210,7 @@ export class CotizacionesService {
           observaciones: true,
           productoId: true,
           hospital: { select: { nombreCompleto: true } },
-          producto: { select: { nombre: true, sistema: { select: { sistema: true } } } },
+          producto: { select: { nombre: true, categoriaId: true, sistema: { select: { sistema: true } } } },
         },
       }),
       this.prisma.remision.findMany({
@@ -284,6 +290,9 @@ export class CotizacionesService {
       contadorPaquetes: c.contadorPaquetes,
       nivel: c.nivel,
       firma: c.firma,
+      firmadoEn: c.firmadoEn,
+      firmadoPor: c.firmadoPor?.nombreCompleto ?? null,
+      ediciones: c.ediciones.map(e => ({ editadoEn: e.editadoEn, editadoPor: e.usuario?.nombreCompleto ?? null })),
       items: detalles.map(d => ({
         id: d.id,
         productoId: d.productoId,
@@ -296,6 +305,7 @@ export class CotizacionesService {
         valor: d.valor,
         observaciones: d.observaciones,
         esEspecial: d.productoId ? productoIdsConEspecial.has(d.productoId) : false,
+        esRenta: (d.producto?.categoriaId ?? '').toUpperCase() === 'RENTA',
       })),
       remisionesAsociadas: remisiones.map(r => ({ id: r.id, numRemision: r.numRemision, estado: r.estado })),
       programacionAsociada: programacionAsociada && {
@@ -343,7 +353,7 @@ export class CotizacionesService {
     return this.getById(id);
   }
 
-  async updateCotizacion(id: string, dto: UpdateCotizacionDto) {
+  async updateCotizacion(id: string, dto: UpdateCotizacionDto, usuarioId?: string) {
     const existing = await this.prisma.cotizacion.findUnique({ where: { id }, select: { id: true } });
     if (!existing) throw new NotFoundException('Cotización no encontrada');
 
@@ -369,14 +379,21 @@ export class CotizacionesService {
     if (dto.vrDctoPesos !== undefined) data.vrDctoPesos = dto.vrDctoPesos;
     if (dto.impuestos !== undefined) data.impuestos = dto.impuestos;
 
-    await this.prisma.cotizacion.update({ where: { id }, data });
+    const edicionId = await this.generateId();
+    await this.prisma.$transaction([
+      this.prisma.cotizacion.update({ where: { id }, data }),
+      this.prisma.cotizacionEdicion.create({ data: { id: edicionId, cotizacionId: id, usuarioId: usuarioId ?? null, editadoEn: nowMexico() } }),
+    ]);
     return this.getById(id);
   }
 
-  async setFirma(id: string, firma: string) {
+  async setFirma(id: string, firma: string, usuarioId?: string) {
     const existing = await this.prisma.cotizacion.findUnique({ where: { id }, select: { id: true } });
     if (!existing) throw new NotFoundException('Cotización no encontrada');
-    await this.prisma.cotizacion.update({ where: { id }, data: { firma } });
+    await this.prisma.cotizacion.update({
+      where: { id },
+      data: { firma, firmadoPorId: usuarioId ?? null, firmadoEn: nowMexico() },
+    });
     return this.getById(id);
   }
 
@@ -544,6 +561,20 @@ export class CotizacionesService {
     });
     const precioPorProducto = new Map(listasPrecio.map(lp => [lp.productoId, lp.precio]));
     return productoIds.map(id => ({ productoId: id, precio: precioPorProducto.get(id) ?? null }));
+  }
+
+  // Referencia/nombre (especial si aplica, si no el estándar del producto) de una lista de
+  // productos según un hospital — se usa en edición para recalcular EN MEMORIA la etiqueta de los
+  // consumos ya agregados cuando cambia el Hospital, sin persistir nada hasta Guardar (mismo
+  // criterio que getPreciosPorProductos con la tarifa). Reutiliza resolveProductoDisplay.
+  async getNombresPorProductos(productoIds: string[], hospitalId: string | null) {
+    if (productoIds.length === 0) return [];
+    return Promise.all(
+      productoIds.map(async productoId => {
+        const { referencia, descripcion } = await this.resolveProductoDisplay(productoId, hospitalId);
+        return { productoId, referencia, descripcion };
+      }),
+    );
   }
 
   // tarifaId/hospitalId se usan cuando todavía no existe la cotización (se está creando) y ya se

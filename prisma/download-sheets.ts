@@ -225,6 +225,11 @@ const SHEETS = [
     sheetName:     'TercerosGrupos',
     fileName:      'SistemaTspine1.0 - TercerosGrupos.csv',
   },
+  {
+    spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o',
+    sheetName:     'StockPorLotes',
+    fileName:      'SistemaTspine1.0 - StockPorLotes.csv',
+  },
   // Para agregar más pestañas de SistemaTspine1.0:
   // { spreadsheetId: '1lHv_yJ5YoI2smFJYBidtLn4cpEh61XrJ4Jy_a9K_0-o', sheetName: 'NombrePestaña', fileName: 'SistemaTspine1.0 - NombrePestaña.csv' },
 ];

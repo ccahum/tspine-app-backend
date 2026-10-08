@@ -545,6 +545,7 @@ model Sede {
   cotizaciones             Cotizacion[]
   vehiculosCatalogo        VehiculoCatalogo[]
   viajesVehiculo           ViajeVehiculo[]
+  stockPorLotes            StockPorLote[]
 
   @@map("sedes")
 }
@@ -694,6 +695,7 @@ model Tercero {
   facturasCliente          Factura[]                @relation("FacturaCliente")
   notasCreditoAplicadaPor  NotaCredito[]            @relation("NotaCreditoAplicadaPor")
   detTecnicosTecnico       DetTecnico[]             @relation("DetTecnicoTecnico")
+  detTecnicosRegistradoPor DetTecnico[]             @relation("DetTecnicoRegistradoPor")
   valConsumosUsuario           ValConsumo[]             @relation("ValConsumoUsuario")
   valConsumosAutorizador       ValConsumo[]             @relation("ValConsumoAutorizador")
   valConsumoLotesRegistradoPor ValConsumoLote[]         @relation("ValConsumoLoteRegistradoPor")
@@ -737,6 +739,8 @@ model Tercero {
   cotizacionesHospital             Cotizacion[]         @relation("CotizacionHospital")
   cotizacionesResponsableEconomico Cotizacion[]         @relation("CotizacionResponsable")
   cotizacionesEmpresa              Cotizacion[]         @relation("CotizacionEmpresa")
+  cotizacionesFirmadoPor           Cotizacion[]         @relation("CotizacionFirmadoPor")
+  cotizacionEdiciones              CotizacionEdicion[]
   detCotizaHospital                DetCotiza[]          @relation("DetCotizaHospital")
   viajesVehiculoConductor    ViajeVehiculo[] @relation("ViajeVehiculoConductor")
   viajesVehiculoBajaPor      ViajeVehiculo[] @relation("ViajeVehiculoBajaPor")
@@ -751,6 +755,7 @@ model Tercero {
   notificaciones           Notificacion[]
   totp                     TerceroTotp?
   contactos                TerceroContacto[]
+  stockPorLotesRegistrador StockPorLote[]           @relation("StockPorLoteRegistradoPor")
 
   @@index([nombreCompleto])
   @@map("terceros")
@@ -912,7 +917,7 @@ model TecnicoSugerido {
   fechaRegistro   DateTime  @default(now()) @map("fecha_registro")
   registradoPorId String?   @map("registrado_por_id")
 
-  programacion  Programacion @relation(fields: [programacionId], references: [id])
+  programacion  Programacion @relation(fields: [programacionId], references: [id], onDelete: Cascade)
   tecnico       Tercero      @relation("TecnicoSugeridoTecnico",        fields: [tecnicoId],       references: [id])
   registradoPor Tercero?     @relation("TecnicoSugeridoRegistradoPor",  fields: [registradoPorId], references: [id])
 
@@ -1011,6 +1016,11 @@ model DetConsumo {
   eliminar        Boolean  @default(false)
   folioValidacion String?  @map("folio_validacion")
   switch          Boolean?
+  // El id de los consumos importados de AppSheet no es secuencial, y los nuevos (addDetConsumo)
+  // usan randomUUID() — ordenar por id ya no garantiza que lo agregado después quede al final.
+  // Las filas históricas comparten un solo valor (el momento de esta migración); los nuevos
+  // consumos sí quedan después de eso, que es lo único que importa para el orden de la lista.
+  creadoEn        DateTime @default(now()) @map("creado_en")
 
   programacion Programacion? @relation(fields: [programacionId], references: [id])
   remision     Remision?     @relation(fields: [remisionId],     references: [id])
@@ -1032,6 +1042,7 @@ model Lote {
   valConsumoLotes ValConsumoLote[]
   entradasCompra  EntradaCompra[]
   detRequisiciones DetRequisicion[]
+  stockPorLotes   StockPorLote[]
 
   @@map("lotes")
 }
@@ -1150,6 +1161,7 @@ model Producto {
   referenciasEspeciales ReferenciaEspecial[]
   nombresEspeciales     NombreProductoEspecial[]
   tarifasDenegadas      ProductoTarifaDenegada[]
+  stockPorLotes         StockPorLote[]
 
   @@index([nombre])
   @@map("productos")
@@ -1238,10 +1250,12 @@ model DetTecnico {
   seleccioneTipo   String?   @map("seleccione_tipo")
   agregarIva       Boolean?  @map("agregar_iva")
   cargarPorcentaje Decimal?  @map("cargar_porcentaje")  @db.Decimal(5, 2)
+  registradoPorId  String?   @map("registrado_por_id")
 
-  programacion Programacion? @relation(                       fields: [programacionId], references: [id])
-  tecnico      Tercero?      @relation("DetTecnicoTecnico",   fields: [tecnicoId],      references: [id])
-  remision     Remision?     @relation(                       fields: [remisionId],     references: [id])
+  programacion  Programacion? @relation(                           fields: [programacionId],  references: [id])
+  tecnico       Tercero?      @relation("DetTecnicoTecnico",       fields: [tecnicoId],       references: [id])
+  remision      Remision?     @relation(                           fields: [remisionId],      references: [id])
+  registradoPor Tercero?      @relation("DetTecnicoRegistradoPor", fields: [registradoPorId], references: [id])
   detalles     DetTecnicoDetalle[]
   programacionPagos ProgramacionPago[]
 
@@ -1327,6 +1341,7 @@ model Almacen {
   sede    Sede? @relation(fields: [sedeId], references: [id])
   lotes   ValConsumoLote[]
   compras Compra[]
+  stockPorLotes StockPorLote[]
 
   @@map("almacenes")
 }
@@ -1474,6 +1489,30 @@ model ValConsumoLote {
   registradoPor Tercero?    @relation("ValConsumoLoteRegistradoPor", fields: [registradoPorId], references: [id])
 
   @@map("val_consumo_lotes")
+}
+
+// Existencias actuales por lote (tabla física de AppSheet, no calculada) — cada fila es una
+// unidad de stock disponible para un Lote+Producto+Almacen(Sede)+Ubicación. VALIDACIONESID
+// (campo de AppSheet) es solo la concatenación de Lote+Producto+Almacen+Ubicación, un valor
+// derivado que se conserva por fidelidad con el origen pero no se usa para ninguna relación.
+model StockPorLote {
+  id               String    @id @map("id_existencia")
+  loteId           String?   @map("lote_id")
+  productoId       String?   @map("producto_id")
+  sedeId           String?   @map("sede_id")
+  almacenId        String?   @map("almacen_id")
+  origen           String?
+  registradoPorId  String?   @map("registrado_por_id")
+  marcaTiempo      DateTime? @map("marca_tiempo")
+  validacionesId   String?   @map("validaciones_id")
+
+  lote          Lote?     @relation(fields: [loteId],          references: [id])
+  producto      Producto? @relation(fields: [productoId],      references: [id])
+  sede          Sede?     @relation(fields: [sedeId],           references: [id])
+  almacen       Almacen?  @relation(fields: [almacenId],        references: [id])
+  registradoPor Tercero?  @relation("StockPorLoteRegistradoPor", fields: [registradoPorId], references: [id])
+
+  @@map("stock_por_lotes")
 }
 
 model RemTecnico {
@@ -1679,11 +1718,16 @@ model Cotizacion {
   // Firma dibujada por el usuario (PNG en base64) — opcional, se puede agregar al crear la
   // cotización o después desde el detalle. @db.Text porque un varchar normal se queda corto.
   firma                  String?   @db.Text
+  // Quién y cuándo firmó — para mostrarlo en la tarjeta "Actividad" del detalle, igual que
+  // "Cotización creada" ya muestra usuario + fecha.
+  firmadoPorId           String?   @map("firmado_por_id")
+  firmadoEn              DateTime? @map("firmado_en")
   // Vincula la cotización a la Programación en la que se usó — se elige desde el campo
   // "Cotización" de Nueva Programación, buscando por el nombre del médico.
   programacionId         String?   @map("programacion_id")
 
   usuario              Tercero?           @relation("CotizacionUsuario",     fields: [usuarioId],              references: [id])
+  firmadoPor           Tercero?           @relation("CotizacionFirmadoPor",  fields: [firmadoPorId],           references: [id])
   hospital             Tercero?           @relation("CotizacionHospital",    fields: [hospitalId],             references: [id])
   cubrimiento          Tarifa?            @relation("CotizacionCubrimiento", fields: [cubrimientoId],          references: [id])
   responsableEconomico Tercero?           @relation("CotizacionResponsable", fields: [responsableEconomicoId], references: [id])
@@ -1694,8 +1738,25 @@ model Cotizacion {
   productosPaquete     DetallePaquete?    @relation(fields: [productosPaqueteId], references: [id])
   programacion         Programacion?      @relation(fields: [programacionId],     references: [id])
   detalles             DetCotiza[]
+  ediciones            CotizacionEdicion[]
 
   @@map("cotizaciones")
+}
+
+// Un registro por cada vez que se guarda una edición de la cotización (a diferencia de
+// firmadoPor/firmadoEn en Cotizacion, que solo guardan el último evento porque una cotización se
+// firma una sola vez) — para que la tarjeta "Actividad" del detalle pueda mostrar el historial
+// completo de ediciones, no solo la más reciente.
+model CotizacionEdicion {
+  id           String   @id
+  cotizacionId String   @map("cotizacion_id")
+  usuarioId    String?  @map("usuario_id")
+  editadoEn    DateTime @default(now()) @map("editado_en")
+
+  cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  usuario    Tercero?   @relation(fields: [usuarioId], references: [id])
+
+  @@map("cotizacion_ediciones")
 }
 
 model DetCotiza {

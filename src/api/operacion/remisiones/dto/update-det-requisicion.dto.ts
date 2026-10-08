@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsPositive, IsString } from 'class-validator';
+import { IsNumber, IsOptional, IsPositive, IsString, Min } from 'class-validator';
 
 export class UpdateDetRequisicionDto {
   @ApiPropertyOptional({ description: 'ID del Lote' })
@@ -14,7 +14,7 @@ export class UpdateDetRequisicionDto {
   @IsOptional() @IsNumber() @IsPositive()
   cantidad?: number;
 
-  @ApiPropertyOptional({ description: 'Precio, debe ser mayor a cero' })
-  @IsOptional() @IsNumber() @IsPositive()
+  @ApiPropertyOptional({ description: 'Precio, no puede ser negativo' })
+  @IsOptional() @IsNumber() @Min(0)
   precio?: number;
 }

@@ -1,0 +1,2 @@
+-- No-op: "Costo Interno" se calcula al vuelo (cantidad × Producto.costoMxn) en vez de
+-- guardarse como columna — ver RemisionesRepositoryService.getById.

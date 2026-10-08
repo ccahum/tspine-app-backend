@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "det_consumos" ADD COLUMN "creado_en" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

@@ -99,8 +99,9 @@ export class RemisionesController {
   @Post('comisiones')
   @ApiOperation({ summary: 'Crear una nueva asignación de comisión (Det_Tecnicos)' })
   @ApiCreatedResponse({ description: 'Comisión creada' })
-  createComision(@Body() dto: CreateComisionDto) {
-    return this.service.createComision(dto);
+  createComision(@Body() dto: CreateComisionDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string };
+    return this.service.createComision(dto, user.sub);
   }
 
   @Get('comisiones-tecnicos')
@@ -126,6 +127,12 @@ export class RemisionesController {
   @ApiOperation({ summary: 'Buscar Terceros clasificados como COMISIONISTA, para sugerir técnicos' })
   searchTecnicosComisionistas(@Query('search') search?: string) {
     return this.service.searchTecnicosComisionistas(search);
+  }
+
+  @Get('tecnicos-sugeridos-busqueda')
+  @ApiOperation({ summary: 'Buscar Terceros con perfil Técnico_1, Técnico_2 o Enfermero Auxiliar, para el campo Técnicos Sugeridos' })
+  searchTecnicosSugeridos(@Query('search') search?: string) {
+    return this.service.searchTecnicosSugeridos(search);
   }
 
   @Get('tecnicos-sugeridos')
@@ -293,9 +300,9 @@ export class RemisionesController {
   }
 
   @Get('lotes')
-  @ApiOperation({ summary: 'Buscar Lotes por nombre' })
-  searchLotes(@Query('search') search?: string) {
-    return this.service.searchLotes(search);
+  @ApiOperation({ summary: 'Buscar Lotes por nombre, opcionalmente filtrados por producto y sede (existencia en stock_por_lotes)' })
+  searchLotes(@Query('search') search?: string, @Query('productoId') productoId?: string, @Query('sedeId') sedeId?: string) {
+    return this.service.searchLotes(search, productoId, sedeId);
   }
 
   @Get('productos')
@@ -353,6 +360,13 @@ export class RemisionesController {
   createDocumentoProgramacion(@Body() dto: CreateDocumentoProgramacionDto, @Req() req: Request) {
     const user = req['user'] as { sub: string };
     return this.service.createDocumentoProgramacion(dto, user.sub);
+  }
+
+  @Delete('documentos/:id')
+  @ApiOperation({ summary: 'Eliminar un documento de programación (y su archivo si existe)' })
+  async deleteDocumentoProgramacion(@Param('id') id: string) {
+    await this.service.deleteDocumentoProgramacion(id);
+    return { success: true };
   }
 
   @Get('documentos/:id/archivo')

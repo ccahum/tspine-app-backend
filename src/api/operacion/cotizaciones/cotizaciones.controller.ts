@@ -11,6 +11,7 @@ import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
 import { RecalcularPreciosDto } from './dto/recalcular-precios.dto';
 import { RecalcularNombresEspecialesDto } from './dto/recalcular-nombres-especiales.dto';
 import { PreciosPorProductosDto } from './dto/precios-por-productos.dto';
+import { NombresPorProductosDto } from './dto/nombres-por-productos.dto';
 import { SetFirmaCotizacionDto } from './dto/set-firma-cotizacion.dto';
 
 @ApiTags('Operación - Cotizaciones')
@@ -81,6 +82,12 @@ export class CotizacionesController {
     return this.service.getPreciosPorProductos(dto.productoIds, dto.tarifaId);
   }
 
+  @Post('productos/nombres')
+  @ApiOperation({ summary: 'Referencia/nombre (especial si aplica) de una lista de productos según un hospital — para recalcular en memoria la etiqueta de los consumos armados en Editar Cotización cuando cambia el Hospital, antes de guardar' })
+  getNombresPorProductos(@Body() dto: NombresPorProductosDto) {
+    return this.service.getNombresPorProductos(dto.productoIds, dto.hospitalId ?? null);
+  }
+
   @Patch('items/:itemId')
   @ApiOperation({ summary: 'Editar un ítem (Det_Cotiza): producto, cantidad y valor unitario (el valor se recalcula en el servidor)' })
   updateItem(@Param('itemId') itemId: string, @Body() dto: UpdateDetCotizaDto) {
@@ -101,14 +108,16 @@ export class CotizacionesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Editar una cotización' })
-  updateCotizacion(@Param('id') id: string, @Body() dto: UpdateCotizacionDto) {
-    return this.service.updateCotizacion(id, dto);
+  updateCotizacion(@Param('id') id: string, @Body() dto: UpdateCotizacionDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string } | undefined;
+    return this.service.updateCotizacion(id, dto, user?.sub);
   }
 
   @Patch(':id/firma')
   @ApiOperation({ summary: 'Guardar/actualizar la firma dibujada de una cotización (PNG en base64)' })
-  setFirma(@Param('id') id: string, @Body() dto: SetFirmaCotizacionDto) {
-    return this.service.setFirma(id, dto.firma);
+  setFirma(@Param('id') id: string, @Body() dto: SetFirmaCotizacionDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string } | undefined;
+    return this.service.setFirma(id, dto.firma, user?.sub);
   }
 
   @Patch(':id/recalcular-precios')

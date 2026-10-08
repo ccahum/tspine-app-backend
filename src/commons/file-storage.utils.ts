@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
 import { join, normalize } from 'path';
 
 // Relativo al cwd del proceso (/app dentro del contenedor), montado como volumen de Docker
@@ -61,5 +61,16 @@ export function uploadFileExists(relativePath: string | null | undefined): boole
     return existsSync(resolveUploadPath(relativePath));
   } catch {
     return false;
+  }
+}
+
+/** Borra un archivo subido si existe; no lanza si ya no está (ej. doble borrado, archivo migrado sin archivo real). */
+export function deleteUploadFile(relativePath: string | null | undefined): void {
+  if (!relativePath) return;
+  try {
+    const full = resolveUploadPath(relativePath);
+    if (existsSync(full)) unlinkSync(full);
+  } catch {
+    // Ruta inválida o archivo ya no existe — no bloquea el borrado del registro en DB.
   }
 }

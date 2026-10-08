@@ -250,6 +250,7 @@ export class ProgramacionesRepositoryService {
           include: {
             sede: { select: { nombre: true, id: true } },
             hospital: { select: { nombre: true, id: true, ciudadCat: { select: { nombre: true } }, tercero: { select: { id: true, nombreCompleto: true } } } },
+            creadoPorTercero: { select: { nombreCompleto: true } },
             medicos: { include: { medico: { select: { nombreCompleto: true, id: true } } } },
             tecnicos: { include: { tecnico: { select: { nombreCompleto: true, id: true } } } },
             remisiones: { select: { _count: { select: { detTecnicos: true } } } },
@@ -268,6 +269,7 @@ export class ProgramacionesRepositoryService {
                 impuestos: true,
                 hospital: { select: { nombreCompleto: true } },
               },
+              orderBy: { fecha: 'asc' },
             },
           },
         }),

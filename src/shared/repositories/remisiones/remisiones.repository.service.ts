@@ -12,7 +12,7 @@ import { CreateTecnicoSugeridoDto } from '@app/api/operacion/remisiones/dto/crea
 import { CreateValConsumoDto } from '@app/api/operacion/remisiones/dto/create-val-consumo.dto';
 import { CreateValConsumoLoteDto } from '@app/api/operacion/remisiones/dto/create-val-consumo-lote.dto';
 import { CreateDocumentoProgramacionDto } from '@app/api/operacion/remisiones/dto/create-documento-programacion.dto';
-import { decodeBase64DataUrl, extensionFromMime, mimeFromDataUrl, mimeFromExtension, resolveUploadPath, saveUploadFile, uploadFileExists } from '@app/commons/file-storage.utils';
+import { decodeBase64DataUrl, deleteUploadFile, extensionFromMime, mimeFromDataUrl, mimeFromExtension, resolveUploadPath, saveUploadFile, uploadFileExists } from '@app/commons/file-storage.utils';
 import { nowMexico } from '@app/commons/date.utils';
 
 // Mismas 5 categorías "cotizables" que CotizacionesService.searchProductos — usado solo cuando
@@ -68,7 +68,7 @@ export class RemisionesRepositoryService {
     throw new Error('No se pudo generar un ID único para el detalle de la comisión');
   }
 
-  async createComision(dto: CreateComisionDto) {
+  async createComision(dto: CreateComisionDto, usuarioId?: string) {
     if (!dto.vrComision && !dto.detalles?.length) {
       throw new BadRequestException('Debes indicar un valor de asignación o al menos una línea de detalle.');
     }
@@ -101,6 +101,7 @@ export class RemisionesRepositoryService {
         quieresDesglosar: dto.quieresDesglosar,
         seleccioneTipo: dto.seleccioneTipo,
         estadoActual: true,
+        registradoPorId: usuarioId,
         detalles: detallesData ? { create: detallesData } : undefined,
       },
     });
@@ -174,6 +175,26 @@ export class RemisionesRepositoryService {
       SELECT t.id AS id, t.nombre_completo AS "nombreCompleto"
       FROM terceros t
       WHERE EXISTS (SELECT 1 FROM tercero_clasificaciones tc WHERE tc.tercero_id = t.id AND tc.clasificacion = 'COMISIONISTA'::"ClasificacionTercero")
+      ${searchFilter}
+      ORDER BY t.nombre_completo ASC
+      LIMIT 20
+    `;
+  }
+
+  // A diferencia de searchTecnicosComisionistas (que filtra por clasificación COMISIONISTA, usado
+  // en Técnicos Asociados de Remisión), el campo Técnicos Sugeridos filtra por Cargo del Tercero.
+  async searchTecnicosSugeridos(search?: string) {
+    const searchTerm = search?.trim();
+    const searchFilter = searchTerm
+      ? Prisma.sql`AND unaccent(t.nombre_completo) ILIKE unaccent(${'%' + searchTerm + '%'})`
+      : Prisma.empty;
+    const cargos = ['Técnico_1', 'Técnico_2', 'Enfermero Auxiliar'];
+
+    return this.prisma.$queryRaw<{ id: string; nombreCompleto: string | null }[]>`
+      SELECT t.id AS id, t.nombre_completo AS "nombreCompleto"
+      FROM terceros t
+      INNER JOIN cargos c ON c.id = t.cargo_id
+      WHERE c.nombre IN (${Prisma.join(cargos)})
       ${searchFilter}
       ORDER BY t.nombre_completo ASC
       LIMIT 20
@@ -335,7 +356,7 @@ export class RemisionesRepositoryService {
       },
       select: {
         id: true,
-        tecnico:       { select: { nombreCompleto: true } },
+        tecnico:       { select: { id: true, nombreCompleto: true } },
         programacion:  { select: { id: true, numProgram: true } },
         remision:      { select: { id: true, numRemision: true } },
         fechaRegistro: true,
@@ -366,6 +387,7 @@ export class RemisionesRepositoryService {
         remision: { select: { id: true, numRemision: true } },
         producto: { select: { id: true, referencia: true, nombre: true } },
         _count: { select: { valConsumos: { where: { eliminar: { not: true } } } } },
+        valConsumos: { where: { eliminar: { not: true } }, select: { prodRealConsumido: true } },
       },
       orderBy: { id: 'asc' },
     });
@@ -390,6 +412,7 @@ export class RemisionesRepositoryService {
         valorUnitario: Number(c.valorUnitario ?? 0),
         valor: Number(c.valor ?? 0),
         validado: c._count.valConsumos > 0,
+        productoCambiado: c.valConsumos.some(v => v.prodRealConsumido === false),
       });
     }
 
@@ -412,7 +435,7 @@ export class RemisionesRepositoryService {
         cantidadUsada: true,
         observaciones: true,
         producto: { select: { id: true, referencia: true, nombre: true } },
-        remision: { select: { id: true, numRemision: true } },
+        remision: { select: { id: true, numRemision: true, tarifaId: true } },
         programacion: {
           select: {
             id: true,
@@ -468,12 +491,14 @@ export class RemisionesRepositoryService {
       id: consumo.id,
       remisionId: consumo.remision?.id ?? null,
       numRemision: consumo.remision?.numRemision ?? null,
+      tarifaId: consumo.remision?.tarifaId ?? null,
       programacionId: consumo.programacion?.id ?? null,
       numProgram: consumo.programacion?.numProgram ?? consumo.programacion?.id ?? null,
       fechaQx: consumo.programacion?.fechaQx ?? null,
       doctor: consumo.programacion?.medicos.map(m => m.medico.nombreCompleto).join(', ') || null,
       hospital: consumo.programacion?.hospital?.nombre ?? null,
       consumo: consumo.programacion?.consumo ?? null,
+      productoId: consumo.producto?.id ?? null,
       referencia,
       descripcion,
       cantidad: Number(consumo.cantidad ?? 0),
@@ -567,6 +592,8 @@ export class RemisionesRepositoryService {
       select: {
         id: true,
         detConsumoId: true,
+        marcaTiempo: true,
+        usuario: { select: { nombreCompleto: true } },
         remision: { select: { id: true, numRemision: true } },
         detConsumo: {
           select: {
@@ -575,7 +602,7 @@ export class RemisionesRepositoryService {
             producto: { select: { id: true, referencia: true, nombre: true } },
           },
         },
-        producto: { select: { id: true, referencia: true, nombre: true } },
+        producto: { select: { id: true, referencia: true, nombre: true, costoMxn: true } },
         lotes: { select: { cantidad: true } },
       },
     });
@@ -606,6 +633,13 @@ export class RemisionesRepositoryService {
         referenciaValidada: especial?.referencia ?? r.producto?.referencia ?? null,
         nombreValidado: especial?.nombre ?? r.producto?.nombre ?? null,
         valor: Number(r.detConsumo?.valor ?? 0),
+        // Costo real = cantidad realmente validada × costo de catálogo del producto validado
+        // (mismo criterio que Costo Interno de Remisión) — no el producto remisionado original,
+        // por si hubo sustitución (producto especial).
+        costoReal: cantRealValidada * Number(r.producto?.costoMxn ?? 0),
+        costoUnitario: Number(r.producto?.costoMxn ?? 0),
+        marcaTiempo: r.marcaTiempo,
+        usuario: r.usuario?.nombreCompleto ?? null,
       });
     }
 
@@ -733,6 +767,21 @@ export class RemisionesRepositoryService {
       select: { programacionId: true, remisionId: true, productoId: true },
     });
     if (!consumo) throw new NotFoundException('Consumo no encontrado');
+
+    // El consumo remisionado (Det_Consumo) nunca se toca al validar — sigue mostrando siempre lo
+    // que se facturó originalmente. El producto/precio realmente consumido vive solo en este
+    // registro de validación (ValConsumo) y se ve en "Validar consumos"/"Consumos utilizados";
+    // en las tablas de lo remisionado solo se señala que hubo un cambio (ver productoCambiado).
+    const productoRealId = dto.prodRealConsumido ? consumo.productoId : dto.productoId;
+
+    // Costo Total (ver getById de Programación) se calcula sumando costoActual * cantidad de
+    // lotes de cada ValConsumo — este campo solo venía cargado en los ValConsumo migrados de
+    // AppSheet, así que las validaciones nuevas no aportaban nada a ese total. Se guarda acá el
+    // costo del producto realmente consumido (Producto.costoMxn) al momento de validar.
+    const productoReal = productoRealId
+      ? await this.prisma.producto.findUnique({ where: { id: productoRealId }, select: { costoMxn: true } })
+      : null;
+
     return this.prisma.valConsumo.create({
       data: {
         id: randomUUID(),
@@ -743,9 +792,10 @@ export class RemisionesRepositoryService {
         detConsumoId,
         sedeConsumoId: dto.sedeConsumoId,
         prodRealConsumido: dto.prodRealConsumido,
-        productoId: dto.prodRealConsumido ? consumo.productoId : dto.productoId,
+        productoId: productoRealId,
         prodDeTspine: dto.prodDeTspine,
         observacionesAlm: dto.observacionesAlm,
+        costoActual: productoReal?.costoMxn ?? null,
       },
     });
   }
@@ -912,13 +962,17 @@ export class RemisionesRepositoryService {
     const saldo = vrComision - pagado;
 
     // TOTAL FACTURA = SUB TOTAL + IVA − RETENCION IVA − RETENCION ISR
-    const subTotal = dt.agregarIva ? vrComision : vrComision / 1.16;
+    // Sub Total se redondea antes de usarse en los siguientes pasos (no solo al mostrarse) — si no,
+    // el IVA/retenciones no cuadran con lo que se ve al multiplicar el Sub Total ya mostrado por su
+    // porcentaje (ej. $4,310.344827... × 16% = $689.6552 ≈ $689.66, pero $4,310.34 × 16% = $689.65).
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const subTotal = round2(dt.agregarIva ? vrComision : vrComision / 1.16);
     const desglosa = dt.quieresDesglosar ?? false;
-    const iva           = desglosa ? subTotal * 0.16    : 0;
-    const retencionIva  = desglosa ? subTotal * 0.10667 : 0;
+    const iva           = desglosa ? round2(subTotal * 0.16)    : 0;
+    const retencionIva  = desglosa ? round2(subTotal * 0.10667) : 0;
     const esActividadEmpresarial = dt.seleccioneTipo?.trim().toUpperCase() === 'ACTIVIDAD EMPRESARIAL';
-    const retencionIsr  = desglosa ? (esActividadEmpresarial ? 0 : subTotal * 0.0125) : 0;
-    const totalFactura = subTotal + iva - retencionIva - retencionIsr;
+    const retencionIsr  = desglosa ? (esActividadEmpresarial ? 0 : round2(subTotal * 0.0125)) : 0;
+    const totalFactura = round2(subTotal + iva - retencionIva - retencionIsr);
 
     const folio = dt.programacion?.numProgram ?? dt.programacion?.id ?? null;
 
@@ -1046,7 +1100,9 @@ export class RemisionesRepositoryService {
         tipo: true,
         vrComision: true,
         tecnicoId: true,
+        marcaTiempo: true,
         tecnico: { select: { nombreCompleto: true } },
+        registradoPor: { select: { nombreCompleto: true } },
         remision: { select: { id: true, numRemision: true } },
         detalles: {
           select: {
@@ -1061,7 +1117,7 @@ export class RemisionesRepositoryService {
       orderBy: { marcaTiempo: 'asc' },
     });
 
-    type DetalleLinea = { comisionId: string; tipo: string | null; remisionLabel: string | null; productoLabel: string | null; valor: number };
+    type DetalleLinea = { comisionId: string; tipo: string | null; remisionLabel: string | null; productoLabel: string | null; valor: number; marcaTiempo: Date | null; registradoPor: string | null };
     type ItemTecnico = { id: string; tecnico: string | null; monto: number; detalle: DetalleLinea[] };
     const grupos = new Map<string, { categoria: string; items: Map<string, ItemTecnico> }>();
 
@@ -1089,6 +1145,8 @@ export class RemisionesRepositoryService {
             remisionLabel: d.remision?.numRemision ?? d.remision?.id ?? null,
             productoLabel: d.producto?.nombre ?? d.producto?.referencia ?? null,
             valor,
+            marcaTiempo: r.marcaTiempo,
+            registradoPor: r.registradoPor?.nombreCompleto ?? null,
           });
         }
       } else {
@@ -1100,6 +1158,8 @@ export class RemisionesRepositoryService {
           remisionLabel: r.remision?.numRemision ?? r.remision?.id ?? null,
           productoLabel: null,
           valor,
+          marcaTiempo: r.marcaTiempo,
+          registradoPor: r.registradoPor?.nombreCompleto ?? null,
         });
       }
     }
@@ -1129,6 +1189,7 @@ export class RemisionesRepositoryService {
     tarifa: { select: { nombre: true } },
     contacto: { select: { nombreCompleto: true } },
     sedeOrigen: { select: { nombre: true } },
+    detalles: { select: { cantidad: true, precio: true } },
   } as const;
 
   private mapRequisicion(r: {
@@ -1148,12 +1209,15 @@ export class RemisionesRepositoryService {
     tarifa: { nombre: string } | null;
     contacto: { nombreCompleto: string } | null;
     sedeOrigen: { nombre: string } | null;
+    detalles: { cantidad: Prisma.Decimal | number | null; precio: Prisma.Decimal | number | null }[];
   }) {
     const mesNum = r.fecha ? new Date(r.fecha).getUTCMonth() + 1 : null;
+    const total = r.detalles.reduce((sum, d) => sum + Number(d.cantidad ?? 0) * Number(d.precio ?? 0), 0);
     return {
       id: r.id,
       marcaDeTiempo: r.marcaDeTiempo,
       status: r.status,
+      total,
       fecha: r.fecha,
       provieneDeProgramacion: r.provieneDeProgramacion,
       folio: r.programacion?.numProgram ?? r.programacion?.id ?? null,
@@ -1264,7 +1328,7 @@ export class RemisionesRepositoryService {
     });
   }
 
-  /** Formato: REQ_(número de la programación, sin el prefijo PRO_)_0000001 — consecutivo por programación */
+  /** Formato: REQ_(número de la programación, sin el prefijo PRO_)_01 — consecutivo por programación */
   private async generateRequisicionId(programacionId: string): Promise<string> {
     const numProgramacion = programacionId.replace(/^PRO_/, '');
     const prefix = `REQ_${numProgramacion}_`;
@@ -1273,9 +1337,9 @@ export class RemisionesRepositoryService {
       orderBy: { id: 'desc' },
       select: { id: true },
     });
-    if (!last) return `${prefix}0000001`;
+    if (!last) return `${prefix}01`;
     const num = Number.parseInt(last.id.replace(prefix, ''), 10);
-    return `${prefix}${String(Number.isNaN(num) ? 1 : num + 1).padStart(7, '0')}`;
+    return `${prefix}${String(Number.isNaN(num) ? 1 : num + 1).padStart(2, '0')}`;
   }
 
   async createRequisicion(dto: CreateRequisicionDto, usuarioId: string) {
@@ -1327,7 +1391,7 @@ export class RemisionesRepositoryService {
     });
   }
 
-  /** Formato: REM_(número de la programación, sin el prefijo PRO_)_0000001 — consecutivo por programación */
+  /** Formato: REM_(número de la programación, sin el prefijo PRO_)_01 — consecutivo por programación */
   private async generateRemisionId(programacionId: string): Promise<string> {
     const numProgramacion = programacionId.replace(/^PRO_/, '');
     const prefix = `REM_${numProgramacion}_`;
@@ -1336,9 +1400,9 @@ export class RemisionesRepositoryService {
       orderBy: { id: 'desc' },
       select: { id: true },
     });
-    if (!last) return `${prefix}0000001`;
+    if (!last) return `${prefix}01`;
     const num = Number.parseInt(last.id.replace(prefix, ''), 10);
-    return `${prefix}${String(Number.isNaN(num) ? 1 : num + 1).padStart(7, '0')}`;
+    return `${prefix}${String(Number.isNaN(num) ? 1 : num + 1).padStart(2, '0')}`;
   }
 
   async createRemision(dto: CreateRemisionDto, usuarioId: string) {
@@ -1480,12 +1544,19 @@ export class RemisionesRepositoryService {
     await this.prisma.detRequisicion.delete({ where: { id } });
   }
 
-  async searchLotes(search?: string) {
+  async searchLotes(search?: string, productoId?: string, sedeId?: string) {
     const searchTerm = search?.trim();
     // SQL crudo (no where/contains de Prisma) por lo mismo que searchProductos: se necesita
     // unaccent() para que "Solucion" también encuentre "Solución" — Prisma no tiene equivalente.
     const searchFilter = searchTerm
       ? Prisma.sql`AND unaccent(l.lote) ILIKE unaccent(${'%' + searchTerm + '%'})`
+      : Prisma.empty;
+    // Réplica de la fórmula de AppSheet para el campo Lote de Validar Consumo: solo lotes con
+    // existencia física registrada en stock_por_lotes para ese Producto y esa Sede (ALMACEN en
+    // la hoja original). Sin productoId/sedeId (otros formularios que buscan lote "a secas")
+    // no se aplica este filtro, para no cambiarles el comportamiento.
+    const productoFilter = productoId
+      ? Prisma.sql`AND EXISTS (SELECT 1 FROM stock_por_lotes spl WHERE spl.lote_id = l.id_lote AND spl.producto_id = ${productoId} ${sedeId ? Prisma.sql`AND spl.sede_id = ${sedeId}` : Prisma.empty})`
       : Prisma.empty;
 
     return this.prisma.$queryRaw<{ id: string; lote: string | null }[]>`
@@ -1493,6 +1564,7 @@ export class RemisionesRepositoryService {
       FROM lotes l
       WHERE 1=1
       ${searchFilter}
+      ${productoFilter}
       ORDER BY l.lote ASC
       LIMIT 20
     `;
@@ -1649,6 +1721,13 @@ export class RemisionesRepositoryService {
     return { ...documento, archivoDisponible: true };
   }
 
+  async deleteDocumentoProgramacion(id: string) {
+    const documento = await this.prisma.documentoProgramacion.findUnique({ where: { id }, select: { documento: true } });
+    if (!documento) throw new NotFoundException('Documento no encontrado');
+    await this.prisma.documentoProgramacion.delete({ where: { id } });
+    deleteUploadFile(documento.documento);
+  }
+
   async getDocumentoProgramacionArchivo(id: string) {
     const documento = await this.prisma.documentoProgramacion.findUnique({
       where: { id },
@@ -1788,12 +1867,19 @@ export class RemisionesRepositoryService {
             hospital: {
               select: {
                 nombre: true,
-                ciudadCat: { select: { nombre: true } },
+                ciudadCat: { select: { nombre: true, estado: { select: { nombre: true } } } },
                 tercero: { select: { id: true, nombreCompleto: true } },
               },
             },
             medicos:  { select: { medico: { select: { nombreCompleto: true } } } },
             detConsumos: { select: { _count: { select: { valConsumos: true } } } },
+            // Para la barra de trazabilidad (Cotización → Programación → Remisión → Facturación):
+            // si la programación tiene varias cotizaciones vinculadas, se usa la más reciente.
+            cotizaciones: {
+              select: { id: true, numCotizacion: true, status: true },
+              orderBy: { fecha: 'desc' },
+              take: 1,
+            },
           },
         },
         detConsumos: {
@@ -1803,9 +1889,12 @@ export class RemisionesRepositoryService {
             cantidad: true,
             valorUnitario: true,
             valor: true,
-            producto: { select: { id: true, referencia: true, nombre: true } },
+            producto: { select: { id: true, referencia: true, nombre: true, costoMxn: true } },
+            valConsumos: { where: { eliminar: { not: true } }, select: { prodRealConsumido: true } },
           },
-          orderBy: { id: 'asc' },
+          // No por id: los importados de AppSheet no son secuenciales y los nuevos (addDetConsumo)
+          // usan randomUUID() — por creadoEn sí queda lo agregado después al final de la lista.
+          orderBy: { creadoEn: 'asc' },
         },
         remTecnicos: {
           select: {
@@ -1829,6 +1918,9 @@ export class RemisionesRepositoryService {
 
     const subtotal   = detConsumos.reduce((sum, d) => sum + Number(d.valor ?? 0), 0);
     const descuentos = subtotal * (Number(rest.porcentajeDcto ?? 0) / 100) + Number(rest.vrDctoPesos ?? 0);
+    // Costo Interno = lo que realmente cuesta adquirir los productos consumidos (Producto.costoMxn,
+    // precio de catálogo del proveedor), no lo que se le cobra al hospital (eso es `total`).
+    const costoInterno = detConsumos.reduce((sum, d) => sum + Number(d.cantidad ?? 0) * Number(d.producto?.costoMxn ?? 0), 0);
 
     // Las siguientes tres consultas solo dependen de remisionId (no una de otra) — antes se
     // esperaban en secuencia, una tras otra; ahora corren en paralelo.
@@ -1839,6 +1931,7 @@ export class RemisionesRepositoryService {
         select: {
           id: true,
           categoria: true,
+          tipo: true,
           vrComision: true,
           tecnico: { select: { nombreCompleto: true } },
           detalles: { select: { valor: true } },
@@ -1867,7 +1960,7 @@ export class RemisionesRepositoryService {
       }),
     ]);
 
-    const bonosComisionesGrupos = new Map<string, { categoria: string; items: { id: string; tecnico: string | null; monto: number }[] }>();
+    const bonosComisionesGrupos = new Map<string, { categoria: string; items: { id: string; tecnico: string | null; tipo: string | null; monto: number }[] }>();
     for (const r of detTecnicosComision) {
       const cat = r.categoria?.trim() || 'Sin categoría';
       if (!bonosComisionesGrupos.has(cat)) bonosComisionesGrupos.set(cat, { categoria: cat, items: [] });
@@ -1875,6 +1968,7 @@ export class RemisionesRepositoryService {
       bonosComisionesGrupos.get(cat)!.items.push({
         id: r.id,
         tecnico: r.tecnico?.nombreCompleto ?? null,
+        tipo: r.tipo,
         monto: Number(r.vrComision ?? 0) + montoDesglose,
       });
     }
@@ -1942,6 +2036,7 @@ export class RemisionesRepositoryService {
       programacion: rest.programacion
         ? { ...rest.programacion, consumoNoValidado: computeConsumoNoValidado(rest.programacion) }
         : null,
+      costoInterno,
       subtotal,
       descuentos,
       totalAntesImp,
@@ -1962,6 +2057,7 @@ export class RemisionesRepositoryService {
           valor,
           facturado,
           porFacturar: valor - facturado,
+          productoCambiado: d.valConsumos.some(v => v.prodRealConsumido === false),
         };
       }),
       tecnicos: remTecnicos.map(t => ({
@@ -2161,6 +2257,25 @@ export class RemisionesRepositoryService {
     }
     const facturasCount = await this.prisma.factura.count({ where: { remisionId } });
     if (facturasCount > 0) throw new BadRequestException('No se pueden editar los consumos de una remisión que ya tiene factura asociada');
+
+    // Si el producto ya está remisionado (mismo productoId, no eliminado), no se duplica la fila:
+    // se suma la cantidad agregada a la que ya tenía. Aplica tanto desde "+ Agregar" como desde
+    // Editar Remisión, porque ambos pasan por este mismo método.
+    const existente = await this.prisma.detConsumo.findFirst({
+      where: { remisionId, productoId: dto.productoId, eliminar: { not: true } },
+      select: { id: true, cantidad: true, valorUnitario: true },
+    });
+    if (existente) {
+      const nuevaCantidad = Number(existente.cantidad ?? 0) + dto.cantidad;
+      return this.prisma.detConsumo.update({
+        where: { id: existente.id },
+        data: {
+          cantidad: nuevaCantidad,
+          valor: nuevaCantidad * Number(existente.valorUnitario ?? 0),
+        },
+      });
+    }
+
     return this.prisma.detConsumo.create({
       data: {
         id: randomUUID(),
@@ -2272,6 +2387,7 @@ export class RemisionesRepositoryService {
         estadoFactura: true,
         creadoEn: true,
         tarifa: { select: { nombre: true } },
+        usuario: { select: { nombreCompleto: true } },
         detConsumos: {
           where: { eliminar: { not: true } },
           select: { valor: true },
@@ -2284,7 +2400,7 @@ export class RemisionesRepositoryService {
     // lista solo exponía el subtotal crudo de consumos, sin descuento ni impuestos aplicados, lo que
     // no coincidía con el "Total" que sí se muestra en el detalle de la remisión.
     const round2 = (n: number) => Math.round(n * 100) / 100;
-    return remisiones.map(({ detConsumos, impuestos, ...r }) => {
+    return remisiones.map(({ detConsumos, impuestos, usuario, ...r }) => {
       const subtotal = detConsumos.reduce((sum, d) => sum + Number(d.valor ?? 0), 0);
       const descuentos = subtotal * (Number(r.porcentajeDcto ?? 0) / 100) + Number(r.vrDctoPesos ?? 0);
       const totalAntesImp = round2(subtotal - descuentos);
@@ -2293,6 +2409,7 @@ export class RemisionesRepositoryService {
       const retencion = round2((normImpuestos === 'retencion' || normImpuestos === 'todos') ? totalAntesImp * 0.106667 : 0);
       return {
         ...r,
+        usuario: usuario?.nombreCompleto ?? null,
         subtotal,
         total: round2(totalAntesImp + iva - retencion),
       };

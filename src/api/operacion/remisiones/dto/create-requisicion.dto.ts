@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsDateString, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsDateString, IsNumber, IsOptional, IsPositive, IsString, Min, ValidateNested } from 'class-validator';
 
 export class InsumoLineDto {
   @ApiPropertyOptional({ description: 'ID del Lote' })
@@ -15,8 +15,8 @@ export class InsumoLineDto {
   @IsNumber() @IsPositive()
   cantidad!: number;
 
-  @ApiProperty({ description: 'Precio, debe ser mayor a cero' })
-  @IsNumber() @IsPositive()
+  @ApiProperty({ description: 'Precio, no puede ser negativo' })
+  @IsNumber() @Min(0)
   precio!: number;
 }
 

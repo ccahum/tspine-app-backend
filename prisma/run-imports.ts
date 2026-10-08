@@ -48,6 +48,7 @@ const STEPS = [
   { label: 'Import Det. Técnicos Detalle', script: 'import-dettecnicodetalle' },    // necesita det_tecnicos, programaciones, remisiones, productos
   { label: 'Import Det. Consumos',         script: 'import-detconsumos' },          // necesita programaciones, remisiones, productos
   { label: 'Import Almacenes',             script: 'import-almacenes' },            // necesita sedes
+  { label: 'Import Stock Por Lotes',       script: 'import-stockporlotes' },        // necesita lotes, productos, sedes, almacenes, terceros
   { label: 'Import Val. Consumo',          script: 'import-valconsumo' },           // necesita det_consumos + pasos anteriores
   { label: 'Import Val. Consumo Lotes',    script: 'import-valconsumolotes' },      // necesita val_consumo, lotes, almacenes
   { label: 'Import Rem. Técnicos',         script: 'import-remtecnicos' },          // necesita programaciones, remisiones, terceros

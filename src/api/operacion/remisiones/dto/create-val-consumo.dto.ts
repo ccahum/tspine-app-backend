@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, ValidateIf } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsString, ValidateIf } from 'class-validator';
 
 export class CreateValConsumoDto {
   @ApiProperty({ description: 'Sede donde se validó el consumo' })

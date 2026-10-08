@@ -65,7 +65,7 @@ export class CreateComisionDto {
   @IsOptional() @IsBoolean()
   quieresDesglosar?: boolean;
 
-  @ApiProperty({ enum: SELECCIONE_TIPO_COMISION })
-  @IsIn(SELECCIONE_TIPO_COMISION)
-  seleccioneTipo!: string;
+  @ApiPropertyOptional({ enum: SELECCIONE_TIPO_COMISION })
+  @IsOptional() @IsIn(SELECCIONE_TIPO_COMISION)
+  seleccioneTipo?: string;
 }

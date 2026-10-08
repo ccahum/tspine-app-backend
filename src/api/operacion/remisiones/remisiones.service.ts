@@ -24,8 +24,8 @@ export class RemisionesService {
     return this.repo.getCxcStats();
   }
 
-  createComision(dto: CreateComisionDto) {
-    return this.repo.createComision(dto);
+  createComision(dto: CreateComisionDto, usuarioId?: string) {
+    return this.repo.createComision(dto, usuarioId);
   }
 
   searchTecnicos(search?: string, clasificacion?: ClasificacionTercero) {
@@ -42,6 +42,10 @@ export class RemisionesService {
 
   searchTecnicosComisionistas(search?: string) {
     return this.repo.searchTecnicosComisionistas(search);
+  }
+
+  searchTecnicosSugeridos(search?: string) {
+    return this.repo.searchTecnicosSugeridos(search);
   }
 
   findTecnicosSugeridosByProgramacion(programacionId: string) {
@@ -196,8 +200,8 @@ export class RemisionesService {
     return this.repo.deleteDetRequisicion(id);
   }
 
-  searchLotes(search?: string) {
-    return this.repo.searchLotes(search);
+  searchLotes(search?: string, productoId?: string, sedeId?: string) {
+    return this.repo.searchLotes(search, productoId, sedeId);
   }
 
   searchProductos(search?: string, tarifaId?: string, soloCotizables?: boolean) {
@@ -230,6 +234,10 @@ export class RemisionesService {
 
   getDocumentoProgramacionArchivo(id: string) {
     return this.repo.getDocumentoProgramacionArchivo(id);
+  }
+
+  deleteDocumentoProgramacion(id: string) {
+    return this.repo.deleteDocumentoProgramacion(id);
   }
 
   getRemisionFirmaArchivo(id: string) {
