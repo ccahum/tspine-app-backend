@@ -76,9 +76,9 @@ export class ProgramacionesController {
   }
 
   @Get('cotizaciones')
-  @ApiOperation({ summary: 'Buscar cotizaciones por nombre de médico, para vincularlas a una programación. Si se pasa "medicos" (nombres separados por coma), filtra estrictamente por esos médicos en vez de por "search".' })
-  async searchCotizaciones(@Query('search') search?: string, @Query('medicos') medicos?: string) {
-    return this.service.searchCotizaciones(search, medicos);
+  @ApiOperation({ summary: 'Buscar cotizaciones por nombre de médico, para vincularlas a una programación. Si se pasa "medicos" (nombres separados por coma), filtra estrictamente por esos médicos en vez de por "search". "hospitalId" filtra además por hospital (AND, no reemplaza el filtro de médicos).' })
+  async searchCotizaciones(@Query('search') search?: string, @Query('medicos') medicos?: string, @Query('hospitalId') hospitalId?: string) {
+    return this.service.searchCotizaciones(search, medicos, hospitalId);
   }
 
   @Get('cotizaciones/items')
@@ -102,8 +102,9 @@ export class ProgramacionesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Editar una programación existente' })
-  async update(@Param('id') id: string, @Body() dto: UpdateProgramacionDto) {
-    return this.service.update(id, dto);
+  async update(@Param('id') id: string, @Body() dto: UpdateProgramacionDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string } | undefined;
+    return this.service.update(id, dto, user?.sub);
   }
 
   @Delete(':id')

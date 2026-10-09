@@ -411,8 +411,9 @@ export class RemisionesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Editar una remisión (solo permitido si está en estado Tramitada o Descorche)' })
-  updateRemision(@Param('id') id: string, @Body() dto: UpdateRemisionDto) {
-    return this.service.updateRemision(id, dto);
+  updateRemision(@Param('id') id: string, @Body() dto: UpdateRemisionDto, @Req() req: Request) {
+    const user = req['user'] as { sub: string } | undefined;
+    return this.service.updateRemision(id, dto, user?.sub);
   }
 
   @Delete(':id')

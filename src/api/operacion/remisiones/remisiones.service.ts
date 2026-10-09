@@ -248,8 +248,8 @@ export class RemisionesService {
     return this.repo.getById(id);
   }
 
-  updateRemision(id: string, dto: UpdateRemisionDto) {
-    return this.repo.updateRemision(id, dto);
+  updateRemision(id: string, dto: UpdateRemisionDto, usuarioId?: string) {
+    return this.repo.updateRemision(id, dto, usuarioId);
   }
 
   addRemTecnico(remisionId: string, tecnicoId: string, usuarioId: string) {

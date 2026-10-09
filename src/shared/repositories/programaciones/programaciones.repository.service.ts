@@ -271,6 +271,10 @@ export class ProgramacionesRepositoryService {
               },
               orderBy: { fecha: 'asc' },
             },
+            ediciones: {
+              orderBy: { editadoEn: 'asc' },
+              select: { editadoEn: true, usuario: { select: { nombreCompleto: true } } },
+            },
           },
         }),
         this.prisma.remision.findMany({
@@ -375,6 +379,7 @@ export class ProgramacionesRepositoryService {
 
     return {
       ...programacion,
+      ediciones: programacion.ediciones.map(e => ({ editadoEn: e.editadoEn, editadoPor: e.usuario?.nombreCompleto ?? null })),
       cotizaciones: programacion.cotizaciones.map(c => ({
         id: c.id,
         numCotizacion: c.numCotizacion,
@@ -447,7 +452,7 @@ export class ProgramacionesRepositoryService {
     });
   }
 
-  async update(id: string, dto: { fechaQx?: string; horaQx?: string; sedeId?: string; hospitalId?: string; observaciones?: string; consumo?: string; medicoIds?: string[]; cotizacionIds?: string[] }) {
+  async update(id: string, dto: { fechaQx?: string; horaQx?: string; sedeId?: string; hospitalId?: string; observaciones?: string; consumo?: string; medicoIds?: string[]; cotizacionIds?: string[] }, usuarioId?: string) {
     const data: any = {};
     if (dto.fechaQx !== undefined) data.fechaQx = new Date(dto.fechaQx);
     if (dto.horaQx !== undefined) data.horaQx = dto.horaQx;
@@ -476,18 +481,22 @@ export class ProgramacionesRepositoryService {
       });
     }
 
-    return this.prisma.programacion.update({
-      where: { id },
-      data,
-      include: {
-        sede: { select: { id: true, nombre: true } },
-        hospital: { select: { id: true, nombre: true, ciudadCat: { select: { nombre: true } } } },
-        medicos: { include: { medico: { select: { id: true, nombreCompleto: true } } } },
-        remisiones: { select: { _count: { select: { detTecnicos: true } } } },
-        detConsumos: { select: { _count: { select: { valConsumos: true } } } },
-        _count: { select: { detTecnicos: true } },
-      },
-    });
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.programacion.update({
+        where: { id },
+        data,
+        include: {
+          sede: { select: { id: true, nombre: true } },
+          hospital: { select: { id: true, nombre: true, ciudadCat: { select: { nombre: true } } } },
+          medicos: { include: { medico: { select: { id: true, nombreCompleto: true } } } },
+          remisiones: { select: { _count: { select: { detTecnicos: true } } } },
+          detConsumos: { select: { _count: { select: { valConsumos: true } } } },
+          _count: { select: { detTecnicos: true } },
+        },
+      }),
+      this.prisma.programacionEdicion.create({ data: { programacionId: id, usuarioId: usuarioId ?? null, editadoEn: nowMexico() } }),
+    ]);
+    return updated;
   }
 
   async getSedes() {
@@ -529,14 +538,32 @@ export class ProgramacionesRepositoryService {
   // `medicosParam` son los médicos ya seleccionados en el formulario de Programación (nombres
   // separados por coma) — cuando vienen, filtran de forma precisa (la cotización debe pertenecer
   // a alguno de esos médicos) y `search` se ignora, en vez de dejar que el usuario escriba un
-  // nombre distinto y encuentre cotizaciones de médicos que no tiene seleccionados.
-  async searchCotizaciones(search?: string, medicosParam?: string) {
+  // nombre distinto y encuentre cotizaciones de médicos que no tiene seleccionados. `hospitalId`
+  // es un filtro adicional (AND, no OR con los médicos) para Nueva Programación: la cotización
+  // también debe ser del hospital ya elegido en ese formulario.
+  //
+  // `hospitalId` que llega acá es un Hospital.id (lo que usa Programacion.hospitalId), pero
+  // Cotizacion.hospitalId apunta directo a Tercero.id (son dos tablas/espacios de id distintos:
+  // Hospital tiene su propio terceroId que lo vincula a Tercero) — hay que resolver ese puente
+  // antes de filtrar o la comparación nunca encuentra nada.
+  async searchCotizaciones(search?: string, medicosParam?: string, hospitalId?: string) {
     const searchTerm = search?.trim();
     const medicoNombres = medicosParam ? medicosParam.split(',').map(m => m.trim()).filter(Boolean) : [];
+
+    let hospitalTerceroId: string | null = null;
+    if (hospitalId) {
+      const hospital = await this.prisma.hospital.findUnique({ where: { id: hospitalId }, select: { terceroId: true } });
+      hospitalTerceroId = hospital?.terceroId ?? null;
+      // Se pidió filtrar por un hospital que no tiene Tercero vinculado — no puede haber ninguna
+      // cotización de él, así que se corta acá en vez de dejar pasar el filtro sin aplicar.
+      if (!hospitalTerceroId) return [];
+    }
+
     const data = await this.prisma.cotizacion.findMany({
       where: {
         activo: true,
         programacionId: null,
+        ...(hospitalTerceroId ? { hospitalId: hospitalTerceroId } : {}),
         ...(medicoNombres.length > 0
           ? { OR: medicoNombres.map(nombre => ({ medico: { contains: nombre, mode: 'insensitive' as const } })) }
           : searchTerm ? { medico: { contains: searchTerm, mode: 'insensitive' as const } } : {}),

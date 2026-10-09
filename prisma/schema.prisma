@@ -741,6 +741,8 @@ model Tercero {
   cotizacionesEmpresa              Cotizacion[]         @relation("CotizacionEmpresa")
   cotizacionesFirmadoPor           Cotizacion[]         @relation("CotizacionFirmadoPor")
   cotizacionEdiciones              CotizacionEdicion[]
+  programacionEdiciones            ProgramacionEdicion[]
+  remisionEdiciones                RemisionEdicion[]
   detCotizaHospital                DetCotiza[]          @relation("DetCotizaHospital")
   viajesVehiculoConductor    ViajeVehiculo[] @relation("ViajeVehiculoConductor")
   viajesVehiculoBajaPor      ViajeVehiculo[] @relation("ViajeVehiculoBajaPor")
@@ -901,6 +903,7 @@ model Programacion {
   fuentes             Fuente[]
   documentos          DocumentoProgramacion[]
   tecnicosSugeridos   TecnicoSugerido[]
+  ediciones           ProgramacionEdicion[]
   hospital            Hospital?             @relation(fields: [hospitalId], references: [id])
   sede                Sede?                 @relation(fields: [sedeId], references: [id])
   creadoPorTercero    Tercero?              @relation("ProgramacionCreadoPor", fields: [creadoPor], references: [id])
@@ -996,6 +999,7 @@ model Remision {
   valConsumos          ValConsumo[]
   detTecnicoDetalles   DetTecnicoDetalle[]
   remTecnicos          RemTecnico[]
+  ediciones            RemisionEdicion[]
 
   @@index([programacionId])
   @@index([creadoEn])
@@ -1757,6 +1761,32 @@ model CotizacionEdicion {
   usuario    Tercero?   @relation(fields: [usuarioId], references: [id])
 
   @@map("cotizacion_ediciones")
+}
+
+// Mismo propósito que CotizacionEdicion, para Programación y Remisión — un registro por cada
+// vez que se guarda una edición, para que la tarjeta "Actividad" muestre el historial completo.
+model ProgramacionEdicion {
+  id             String   @id @default(uuid())
+  programacionId String   @map("programacion_id")
+  usuarioId      String?  @map("usuario_id")
+  editadoEn      DateTime @default(now()) @map("editado_en")
+
+  programacion Programacion @relation(fields: [programacionId], references: [id], onDelete: Cascade)
+  usuario      Tercero?     @relation(fields: [usuarioId], references: [id])
+
+  @@map("programacion_ediciones")
+}
+
+model RemisionEdicion {
+  id         String   @id @default(uuid())
+  remisionId String   @map("remision_id")
+  usuarioId  String?  @map("usuario_id")
+  editadoEn  DateTime @default(now()) @map("editado_en")
+
+  remision Remision @relation(fields: [remisionId], references: [id], onDelete: Cascade)
+  usuario  Tercero? @relation(fields: [usuarioId], references: [id])
+
+  @@map("remision_ediciones")
 }
 
 model DetCotiza {

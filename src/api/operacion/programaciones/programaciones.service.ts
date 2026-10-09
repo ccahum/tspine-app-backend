@@ -173,10 +173,10 @@ export class ProgramacionesService {
     };
   }
 
-  async update(id: string, dto: UpdateProgramacionDto): Promise<ProgramacionListItemDto> {
+  async update(id: string, dto: UpdateProgramacionDto, usuarioId?: string): Promise<ProgramacionListItemDto> {
     LoggerExtensions.writeDebug(this.logger, 'Actualizando programación', { id, dto });
 
-    const updated = await this.repository.update(id, dto);
+    const updated = await this.repository.update(id, dto, usuarioId);
     return {
       id: updated.id,
       numProgram: updated.numProgram ?? null,
@@ -208,8 +208,8 @@ export class ProgramacionesService {
     return this.repository.searchMedicos(search);
   }
 
-  searchCotizaciones(search?: string, medicos?: string) {
-    return this.repository.searchCotizaciones(search, medicos);
+  searchCotizaciones(search?: string, medicos?: string, hospitalId?: string) {
+    return this.repository.searchCotizaciones(search, medicos, hospitalId);
   }
 
   getConsumosDeCotizaciones(cotizacionIds: string[]) {

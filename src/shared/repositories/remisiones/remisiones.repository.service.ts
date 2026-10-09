@@ -463,7 +463,7 @@ export class RemisionesRepositoryService {
         observacionesAlm: true,
         eliminar: true,
         sedeConsumo: { select: { nombre: true } },
-        producto: { select: { id: true, referencia: true, nombre: true } },
+        producto: { select: { id: true, referencia: true, nombre: true, costoMxn: true } },
         lotes: {
           select: {
             id: true,
@@ -504,7 +504,10 @@ export class RemisionesRepositoryService {
       cantidad: Number(consumo.cantidad ?? 0),
       valorUnitario: Number(consumo.valorUnitario ?? 0),
       valor: Number(consumo.valor ?? 0),
-      cantidadUsada: Number(consumo.cantidadUsada ?? 0),
+      // No se lee de consumo.cantidadUsada (columna que nunca se escribe desde la app, solo trae
+      // herencia muerta de la migración de AppSheet) — se calcula igual que cantRealValidada más
+      // abajo, sumando los lotes de cada validación, para que también funcione con históricos.
+      cantidadUsada: validaciones.reduce((sum, v) => sum + v.lotes.reduce((s, l) => s + Number(l.cantidad ?? 0), 0), 0),
       observaciones: consumo.observaciones,
       productoValidado: validaciones.map(v => {
         const especial = v.producto?.id ? especialesValidados.get(v.producto.id) : undefined;
@@ -522,6 +525,9 @@ export class RemisionesRepositoryService {
         productoValidadoDescripcion,
         numeroOC: v.numeroOC,
         sedeConsumo: v.sedeConsumo?.nombre ?? null,
+        // Mismo criterio que "Costo Unit." en Consumos utilizados/Validar consumos (costo de
+        // catálogo del producto realmente consumido, no el remisionado original).
+        costoUnitario: Number(v.producto?.costoMxn ?? 0),
         prodRealConsumido: v.prodRealConsumido,
         prodDeTspine: v.prodDeTspine,
         observacionesAlm: v.observacionesAlm,
@@ -593,6 +599,7 @@ export class RemisionesRepositoryService {
         id: true,
         detConsumoId: true,
         marcaTiempo: true,
+        prodRealConsumido: true,
         usuario: { select: { nombreCompleto: true } },
         remision: { select: { id: true, numRemision: true } },
         detConsumo: {
@@ -640,6 +647,7 @@ export class RemisionesRepositoryService {
         costoUnitario: Number(r.producto?.costoMxn ?? 0),
         marcaTiempo: r.marcaTiempo,
         usuario: r.usuario?.nombreCompleto ?? null,
+        productoCambiado: r.prodRealConsumido === false,
       });
     }
 
@@ -1221,6 +1229,7 @@ export class RemisionesRepositoryService {
       fecha: r.fecha,
       provieneDeProgramacion: r.provieneDeProgramacion,
       folio: r.programacion?.numProgram ?? r.programacion?.id ?? null,
+      programacionId: r.programacion?.id ?? null,
       validacion: r.validacion,
       existeProgramacion: r.existeProgramacion,
       cubrimientoId: r.cubrimientoId,
@@ -1517,8 +1526,12 @@ export class RemisionesRepositoryService {
       id: d.id,
       loteId: d.loteId,
       productoId: d.productoId,
-      cantidad: d.cantidad,
-      precio: d.precio,
+      // Decimal de Prisma se serializa como string al pasar por JSON (Decimal.prototype.toJSON
+      // hace toString()) — sin este Number(), el tipo DetRequisicionItem.cantidad del frontend
+      // miente (dice number pero llega string en runtime), y cualquier suma con "+" ahí concatena
+      // texto en vez de sumar (ej. al fusionar cantidades de un insumo duplicado).
+      cantidad: d.cantidad === null ? null : Number(d.cantidad),
+      precio: d.precio === null ? null : Number(d.precio),
       fecha: d.requisicion?.fecha ?? null,
       lote: d.lote?.lote ?? null,
       producto: d.producto?.nombre ?? null,
@@ -1841,6 +1854,10 @@ export class RemisionesRepositoryService {
         cotizacion: true,
         firma: true,
         status: true,
+        ediciones: {
+          orderBy: { editadoEn: 'asc' },
+          select: { editadoEn: true, usuario: { select: { nombreCompleto: true } } },
+        },
         usuario:              { select: { id: true, nombreCompleto: true } },
         tarifa:               { select: { id: true, nombre: true } },
         cubrimiento:          { select: { id: true, nombre: true } },
@@ -2032,6 +2049,7 @@ export class RemisionesRepositoryService {
 
     return {
       ...rest,
+      ediciones: rest.ediciones.map(e => ({ editadoEn: e.editadoEn, editadoPor: e.usuario?.nombreCompleto ?? null })),
       firmaDisponible: uploadFileExists(rest.firma),
       programacion: rest.programacion
         ? { ...rest.programacion, consumoNoValidado: computeConsumoNoValidado(rest.programacion) }
@@ -2175,36 +2193,43 @@ export class RemisionesRepositoryService {
         })),
       });
 
-      await tx.remision.update({ where: { id: remisionId }, data: { cxc: true } });
+      // tieneFactura es lo que usa el stepper de trazabilidad (Cotización → Programación →
+      // Remisión → Facturación) para marcar el paso "Facturación" como hecho — sin esto, aunque
+      // la factura ya exista, el stepper se queda mostrando "Pendiente".
+      await tx.remision.update({ where: { id: remisionId }, data: { cxc: true, tieneFactura: true } });
 
       return factura;
     });
   }
 
   /** Solo se pueden editar remisiones en estado Tramitada o Descorche. */
-  async updateRemision(id: string, dto: UpdateRemisionDto) {
+  async updateRemision(id: string, dto: UpdateRemisionDto, usuarioEditorId?: string) {
     const current = await this.prisma.remision.findUnique({ where: { id }, select: { estado: true } });
     if (!current) throw new NotFoundException('Remisión no encontrada');
     if (current.estado !== 'Tramitada' && current.estado !== 'Descorche') {
       throw new BadRequestException('Solo se pueden editar remisiones en estado Tramitada o Descorche');
     }
-    return this.prisma.remision.update({
-      where: { id },
-      data: {
-        usuarioId: dto.usuarioId,
-        paciente: dto.paciente,
-        cirugiaRealizada: dto.cirugiaRealizada,
-        cubrimientoId: dto.cubrimientoId,
-        tarifaId: dto.tarifaId,
-        empresaId: dto.empresaId,
-        responsableEconomicoId: dto.responsableEconomicoId,
-        anestesiologo: dto.anestesiologo,
-        impuestos: dto.impuestos,
-        tieneDcto: dto.tieneDcto,
-        porcentajeDcto: dto.porcentajeDcto,
-        vrDctoPesos: dto.vrDctoPesos,
-      },
-    });
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.remision.update({
+        where: { id },
+        data: {
+          usuarioId: dto.usuarioId,
+          paciente: dto.paciente,
+          cirugiaRealizada: dto.cirugiaRealizada,
+          cubrimientoId: dto.cubrimientoId,
+          tarifaId: dto.tarifaId,
+          empresaId: dto.empresaId,
+          responsableEconomicoId: dto.responsableEconomicoId,
+          anestesiologo: dto.anestesiologo,
+          impuestos: dto.impuestos,
+          tieneDcto: dto.tieneDcto,
+          porcentajeDcto: dto.porcentajeDcto,
+          vrDctoPesos: dto.vrDctoPesos,
+        },
+      }),
+      this.prisma.remisionEdicion.create({ data: { remisionId: id, usuarioId: usuarioEditorId ?? null, editadoEn: nowMexico() } }),
+    ]);
+    return updated;
   }
 
   /** Agregar un técnico a una remisión ya existente — misma restricción de estado que updateRemision. */
